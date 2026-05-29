@@ -28,7 +28,7 @@ body {
 }
 
 header h1 {
-  margin: 0 0 .25rem;
+  margin: 0 0 0.25rem;
   font-size: 1.6rem;
 }
 header p {
@@ -37,14 +37,14 @@ header p {
 }
 
 .tag {
-  font-size: .7rem;
+  font-size: 0.7rem;
   background: #3f2d1a;
   color: #fbbf24;
-  padding: .15rem .5rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   vertical-align: middle;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: 0.05em;
 }
 
 section {
@@ -57,7 +57,7 @@ section {
 
 h2 {
   font-size: 1rem;
-  margin: 0 0 .75rem;
+  margin: 0 0 0.75rem;
   color: var(--accent);
 }
 
@@ -69,15 +69,15 @@ textarea {
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: .75rem;
+  padding: 0.75rem;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: .85rem;
+  font-size: 0.85rem;
 }
 
 .hint {
   color: var(--muted);
-  font-size: .8rem;
-  margin: .75rem 0 .35rem;
+  font-size: 0.8rem;
+  margin: 0.75rem 0 0.35rem;
 }
 
 .set {
@@ -85,14 +85,14 @@ textarea {
   padding: 0;
   margin: 0;
   display: grid;
-  gap: .25rem;
+  gap: 0.25rem;
 }
 .set li {
-  font-size: .82rem;
+  font-size: 0.82rem;
   background: #0b0d12;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: .3rem .55rem;
+  padding: 0.3rem 0.55rem;
 }
 .set code {
   color: var(--token);
@@ -104,7 +104,7 @@ textarea {
   color: var(--muted);
   float: right;
   font-style: normal;
-  font-size: .72rem;
+  font-size: 0.72rem;
 }
 
 pre.wire,
@@ -112,11 +112,11 @@ pre.answer {
   background: #0b0d12;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: .75rem;
+  padding: 0.75rem;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: .82rem;
+  font-size: 0.82rem;
   min-height: 2rem;
 }
 pre.wire {
@@ -129,7 +129,7 @@ button {
   color: #062925;
   border: 0;
   border-radius: 8px;
-  padding: .6rem 1.1rem;
+  padding: 0.6rem 1.1rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -140,6 +140,6 @@ button:disabled {
 
 .status {
   color: var(--muted);
-  font-size: .82rem;
+  font-size: 0.82rem;
   min-height: 1.2rem;
 }

@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   NoLLMProvider,
   type RedactedPayload,
-  Vault,
   redactForEgress,
   unsafeBypass,
+  Vault,
 } from "../src/index.js";
 
 describe("Egress Guard", () => {

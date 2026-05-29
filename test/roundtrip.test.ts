@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Vault, redactForEgress, rehydrate } from "../src/index.js";
+import { redactForEgress, rehydrate, Vault } from "../src/index.js";
 import { SYNTHETIC_STATEMENT } from "../src/testing.js";
 
 describe("redact -> rehydrate round-trip", () => {

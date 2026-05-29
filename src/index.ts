@@ -13,31 +13,26 @@
 
 // Detection spine.
 export { detect } from "./detect/detector.js";
-
-// The reversible loop.
-export { redactForEgress } from "./redact.js";
-export { rehydrate } from "./rehydrate.js";
-export { Vault } from "./vault.js";
-
 // The egress boundary.
 export {
   type LlmProvider,
   type RedactedPayload,
   unsafeBypass,
 } from "./egress.js";
-
-// Providers.
-export { NoLLMProvider } from "./providers/nollm.js";
-export {
-  OpenRouterProvider,
-  type OpenRouterConfig,
-} from "./providers/openrouter.js";
 export {
   makeProvider,
   type ProviderConfig,
   type SelectedProvider,
 } from "./providers/factory.js";
-
+// Providers.
+export { NoLLMProvider } from "./providers/nollm.js";
+export {
+  type OpenRouterConfig,
+  OpenRouterProvider,
+} from "./providers/openrouter.js";
+// The reversible loop.
+export { redactForEgress } from "./redact.js";
+export { rehydrate } from "./rehydrate.js";
 // Public domain types.
 export type {
   AuditEntry,
@@ -47,3 +42,4 @@ export type {
   Span,
   VaultRef,
 } from "./types.js";
+export { Vault } from "./vault.js";

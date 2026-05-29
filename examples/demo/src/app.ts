@@ -1,10 +1,10 @@
 import {
-  type Span,
-  Vault,
   detect,
   makeProvider,
   redactForEgress,
   rehydrate,
+  type Span,
+  Vault,
 } from "@edgeproc/privacy-core";
 import { SYNTHETIC_STATEMENT } from "@edgeproc/privacy-core/testing";
 import "./styles.css";
@@ -77,7 +77,7 @@ async function runLoop(refs: Refs): Promise<void> {
   }
 }
 
-function require<T extends HTMLElement>(root: HTMLElement, sel: string): T {
+function queryRef<T extends HTMLElement>(root: HTMLElement, sel: string): T {
   const el = root.querySelector<T>(sel);
   if (!el) throw new Error(`missing element: ${sel}`);
   return el;
@@ -86,12 +86,12 @@ function require<T extends HTMLElement>(root: HTMLElement, sel: string): T {
 export function mountApp(root: HTMLElement): void {
   root.innerHTML = TEMPLATE.replace("{{provider}}", escapeHtml(label));
   const refs: Refs = {
-    input: require<HTMLTextAreaElement>(root, "#input"),
-    setList: require(root, "#set"),
-    wire: require(root, "#wire"),
-    answer: require(root, "#answer"),
-    status: require(root, "#status"),
-    send: require<HTMLButtonElement>(root, "#send"),
+    input: queryRef<HTMLTextAreaElement>(root, "#input"),
+    setList: queryRef(root, "#set"),
+    wire: queryRef(root, "#wire"),
+    answer: queryRef(root, "#answer"),
+    status: queryRef(root, "#status"),
+    send: queryRef<HTMLButtonElement>(root, "#send"),
   };
   refs.input.value = SYNTHETIC_STATEMENT;
   refs.input.addEventListener("input", () => void refreshPreview(refs));

@@ -1,5 +1,5 @@
 import { detect } from "./detect/detector.js";
-import { type RedactedPayload, mintRedactedPayload } from "./egress.js";
+import { mintRedactedPayload, type RedactedPayload } from "./egress.js";
 import type { AuditSink } from "./types.js";
 import type { Vault } from "./vault.js";
 

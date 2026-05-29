@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OpenRouterProvider, Vault, redactForEgress } from "../src/index.js";
+import { OpenRouterProvider, redactForEgress, Vault } from "../src/index.js";
 import { SYNTHETIC_STATEMENT } from "../src/testing.js";
 
 // The raw PII values planted in the synthetic statement. NONE may appear on the wire.

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  makeProvider,
   NoLLMProvider,
   OpenRouterProvider,
-  makeProvider,
 } from "../src/index.js";
 
 describe("makeProvider", () => {
