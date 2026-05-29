@@ -1,0 +1,18 @@
+{
+  "name": "@edgeproc/privacy-core-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable Vite demo that consumes @edgeproc/privacy-core's public API — the redact → preview → send → rehydrate wow loop.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@edgeproc/privacy-core": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

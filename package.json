@@ -1,0 +1,47 @@
+{
+  "name": "@edgeproc/privacy-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
+  "license": "MIT",
+  "author": "Harish Seshadri",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/demo/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "demo": "pnpm --filter @edgeproc/privacy-core-demo dev",
+    "gate": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e && pnpm build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "^2.1.9",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
