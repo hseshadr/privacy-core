@@ -1,7 +1,14 @@
 import { detect } from "./detect/detector.js";
 import { mintPendingRedaction, type PendingRedaction } from "./egress.js";
+import { PlaceholderCollisionError } from "./errors.js";
 import type { AuditSink } from "./types.js";
 import type { Vault } from "./vault.js";
+
+/**
+ * The placeholder grammar (same shape `rehydrate` restores). Input containing
+ * it would be indistinguishable from vault tokens after redaction.
+ */
+const PLACEHOLDER_SHAPE = /\[[A-Z]+_\d+\]/;
 
 /**
  * THE ONLY legitimate constructor of a PendingRedaction.
@@ -17,6 +24,13 @@ export async function redactForEgress(
   vault: Vault,
   audit?: AuditSink,
 ): Promise<PendingRedaction> {
+  const collision = raw.match(PLACEHOLDER_SHAPE);
+  if (collision) {
+    throw new PlaceholderCollisionError(
+      `input already contains placeholder-shaped text ("${collision[0]}") — ` +
+        "redacting it would make restore ambiguous, so the redaction is refused",
+    );
+  }
   const spans = detect(raw);
   // Rebuild text left-to-right, swapping each span for its vault token.
   let out = "";

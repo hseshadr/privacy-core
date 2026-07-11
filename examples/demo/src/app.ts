@@ -48,11 +48,18 @@ function renderSet(refs: Refs, spans: readonly Span[], vault: Vault): void {
 
 /** Live preview: show the redaction set + exact wire text BEFORE approval. */
 async function refreshPreview(refs: Refs): Promise<void> {
-  const vault = new Vault();
-  const spans = detect(refs.input.value);
-  const pending = await redactForEgress(refs.input.value, vault);
-  refs.wire.textContent = pending.redactedText;
-  renderSet(refs, spans, vault);
+  try {
+    const vault = new Vault();
+    const spans = detect(refs.input.value);
+    const pending = await redactForEgress(refs.input.value, vault);
+    refs.wire.textContent = pending.redactedText;
+    renderSet(refs, spans, vault);
+  } catch (err) {
+    // Fail closed, visibly: e.g. input already contains placeholder-shaped
+    // text ([CARD_1]), which would make restore ambiguous.
+    refs.wire.textContent = `Refused: ${String(err)}`;
+    refs.setList.replaceChildren();
+  }
 }
 
 /** redact → review → APPROVE (the click) → send → rehydrate, fresh vault per run. */
@@ -60,22 +67,27 @@ async function runLoop(refs: Refs): Promise<void> {
   refs.send.disabled = true;
   refs.status.textContent = "Redacting on-device…";
   const vault = new Vault();
-  const spans = detect(refs.input.value);
-  const pending = await redactForEgress(refs.input.value, vault);
-  refs.wire.textContent = pending.redactedText;
-  renderSet(refs, spans, vault);
-  // The click on "Approve & send" IS the explicit review action: the user has
-  // seen the redaction set + exact wire payload above. Nothing is sendable
-  // until this line runs — zero detections included.
-  const payload = approve(pending);
-  refs.status.textContent = `Approved. Sending redacted text to ${label}…`;
   try {
+    const spans = detect(refs.input.value);
+    const pending = await redactForEgress(refs.input.value, vault);
+    refs.wire.textContent = pending.redactedText;
+    renderSet(refs, spans, vault);
+    // The click on "Approve & send" IS the explicit review action: the user
+    // has seen the redaction set + exact wire payload above. Nothing is
+    // sendable until this line runs — zero detections included.
+    const payload = approve(pending);
+    refs.status.textContent = `Approved. Sending redacted text to ${label}…`;
     const res = await provider.complete(payload);
-    refs.answer.textContent = rehydrate(res.redactedText, vault);
+    // Bind the restore to the vault the payload was redacted with.
+    refs.answer.textContent = rehydrate(
+      res.redactedText,
+      vault,
+      payload.vaultRef,
+    );
     refs.status.textContent =
       "Done. The provider only saw placeholders; real values were restored locally.";
   } catch (err) {
-    refs.answer.textContent = `Provider error: ${String(err)}`;
+    refs.answer.textContent = `Error: ${String(err)}`;
     refs.status.textContent = "Error (see answer pane).";
   } finally {
     refs.send.disabled = false;

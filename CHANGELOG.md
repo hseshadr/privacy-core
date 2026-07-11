@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pendings are frozen, closing the mutate-after-approval hole. Custom
   `LlmProvider` implementations should call `assertApproved()` first —
   it is exported for exactly that.
+- **Reversibility failures now fail closed with typed errors.**
+  `redactForEgress` throws `PlaceholderCollisionError` when the input already
+  contains placeholder-shaped text (`[CARD_1]`) — previously such text passed
+  through and `rehydrate` would silently substitute vault values into text
+  that never contained them. `rehydrate` accepts the payload's `vaultRef` as
+  an optional third argument and throws `VaultMismatchError` when handed the
+  wrong vault instead of silently restoring wrong/missing values (the demo
+  passes it).
 
 ### Added
 

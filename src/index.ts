@@ -23,7 +23,12 @@ export {
   unsafeBypass,
 } from "./egress.js";
 // Typed fail-closed errors.
-export { ForgedPayloadError, UnapprovedPayloadError } from "./errors.js";
+export {
+  ForgedPayloadError,
+  PlaceholderCollisionError,
+  UnapprovedPayloadError,
+  VaultMismatchError,
+} from "./errors.js";
 export {
   makeProvider,
   type ProviderConfig,
