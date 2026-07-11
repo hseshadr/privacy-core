@@ -39,37 +39,45 @@ see, top to bottom:
 2. **The redaction set + the exact wire payload** — every real value replaced by
    a placeholder. Open your browser's network tab to confirm: only this redacted
    text would leave the device.
-3. Click **Send**. With no API key it uses the offline echo provider (runs cold);
-   set `VITE_OPENROUTER_API_KEY` (copy `.env.example` → `examples/demo/.env`) to
-   call a real model. Either way, **only placeholders cross the wire**.
+3. Click **Send**. By default it uses the offline echo provider (runs cold). To
+   call a real model, set `OPENROUTER_API_KEY` + `VITE_USE_OPENROUTER=1` (copy
+   `.env.example` → `examples/demo/.env`): the demo then routes through a
+   same-origin **dev proxy** that injects the key server-side, so it never
+   reaches the browser. Either way, **only placeholders cross the wire**.
 4. **The rehydrated answer** — placeholders swapped back to real values locally,
    values that never left your machine.
 
 Prefer to see the guarantee enforced headlessly? `pnpm test:e2e` drives the loop
-in real chromium, intercepts the outbound request, and asserts only placeholders
-cross the wire (and regenerates `docs/wow.png`).
+in real chromium, intercepts the request, and asserts only placeholders cross the
+wire (the screenshot lands in the gitignored `test-results/`).
 
 ## Use it as a library
 
 ```ts
 import {
+  approve,
+  makeProvider,
   redactForEgress,
   rehydrate,
   Vault,
-  makeProvider,
 } from "@edgeproc/privacy-core";
 
 const vault = new Vault();
 const { provider } = makeProvider({ apiKey: process.env.OPENROUTER_API_KEY });
 
-// detect + vault-write + brand — the ONLY way to produce a RedactedPayload.
-const payload = await redactForEgress(rawStatement, vault);
+// detect + vault-write + brand — produces a PendingRedaction: a review PROPOSAL,
+// not yet sendable (no provider will accept it).
+const pending = await redactForEgress(rawStatement, vault);
+
+// The explicit review step turns the proposal into a sendable RedactedPayload.
+// The audit sink is REQUIRED, so every approval is observable.
+const payload = approve(pending, (entry) => console.log(entry));
 
 // provider.complete accepts ONLY a RedactedPayload — raw text won't compile.
 const response = await provider.complete(payload);
 
-// restore real values locally, on-device.
-const answer = rehydrate(response.redactedText, vault);
+// restore real values locally, on-device — bound to the payload's vault.
+const answer = rehydrate(response.redactedText, vault, payload.vaultRef);
 ```
 
 ## The honest hard truth (read this first, it is not a footnote)
@@ -130,7 +138,8 @@ Everything `src/index.ts` exports, and nothing more:
 | Export | Kind | Role |
 |---|---|---|
 | `detect` | fn | deterministic PII span detection |
-| `redactForEgress` | fn | detect → vault-write → brand (only payload constructor) |
+| `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
+| `approve` | fn | explicit review step → mints the sendable payload (audit sink required) |
 | `rehydrate` | fn | restore real values locally from placeholders |
 | `Vault` | class | reversible token↔value map |
 | `RedactedPayload` | type | the branded egress type |
@@ -138,9 +147,10 @@ Everything `src/index.ts` exports, and nothing more:
 | `NoLLMProvider` | class | offline echo provider |
 | `OpenRouterProvider` | class | OpenAI-compatible provider |
 | `makeProvider` | fn | env-driven provider selector |
+| `guardedProvider` | fn | wrap a provider so the runtime egress guard runs at one chokepoint |
 | `unsafeBypass` | fn | the explicit, audited escape hatch |
 
-The brand factory (`mintRedactedPayload`) and the `SYNTHETIC_STATEMENT` fixture
+The brand factory (`mintPendingRedaction`) and the `SYNTHETIC_STATEMENT` fixture
 are intentionally **not** on the front door — a payload can be earned, not
 forged, and a fixture is never shipped by accident.
 

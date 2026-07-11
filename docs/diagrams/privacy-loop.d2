@@ -16,8 +16,12 @@ vault: "Vault\nsrc/vault.ts — reversible token ↔ value map (in-memory, v0)" 
   style.fill: "#f0e8f8"
 }
 
-redact: "redactForEgress()\nsrc/redact.ts — the ONLY RedactedPayload constructor" {
+redact: "redactForEgress()\nsrc/redact.ts — mints a PendingRedaction (proposal)" {
   style.fill: "#e8f4f8"
+}
+
+approve: "approve()\nsrc/egress.ts — explicit review, audit sink required" {
+  style.fill: "#f8f0e8"
 }
 
 guard: "Egress Guard (the moat)\nsrc/egress.ts — branded RedactedPayload + LlmProvider" {
@@ -44,7 +48,8 @@ restored: "Restored reply (on-device)\nreal values never crossed the wire" {
 raw -> detect: "PII spans"
 detect -> redact
 redact -> vault: "store value,\nmint [CARD_1]"
-redact -> guard: "branded\nRedactedPayload"
+redact -> approve: "PendingRedaction\n(proposal)"
+approve -> guard: "branded\nRedactedPayload"
 guard -> providers: "placeholders only\n(raw string = compile error)" {
   style.bold: true
 }

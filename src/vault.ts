@@ -17,7 +17,9 @@ export class Vault {
   private readonly counters = new Map<EntityType, number>();
 
   constructor() {
-    this.ref = { id: `vault-${nextVaultId++}` };
+    // Frozen: `payload.vaultRef` aliases this object, so the rehydrate binding
+    // (VaultMismatchError) cannot be defeated by rewriting the id after the fact.
+    this.ref = Object.freeze({ id: `vault-${nextVaultId++}` });
   }
 
   /** Return the stable placeholder for a (type, value), minting one on first sight. */

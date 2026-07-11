@@ -18,16 +18,21 @@ model's reply is rehydrated locally, so real values never cross the wire.
 2. **`redactForEgress()`** (`src/redact.ts`) writes each detected value into the
    **`Vault`** (`src/vault.ts`) and replaces it with a stable typed placeholder —
    `[CARD_1]`, `[NAME_2]`; the same value always gets the same token. It returns a
-   **branded `RedactedPayload`** — and it is the *only* public constructor of that type.
-3. **The Egress Guard** (`src/egress.ts`) is the moat: `LlmProvider.complete()` accepts
+   **branded `PendingRedaction`** — a review *proposal*, not yet sendable.
+3. **`approve()`** (`src/egress.ts`) is the explicit review step: it converts a
+   pipeline-minted `PendingRedaction` into the sendable **`RedactedPayload`**. The
+   audit sink is **required**, so no approval is silent — and even a zero-detection
+   result must pass through here; nothing is sendable by default.
+4. **The Egress Guard** (`src/egress.ts`) is the moat: `LlmProvider.complete()` accepts
    only `RedactedPayload`. A raw `string` is not assignable, so leaking raw text to a
-   provider fails at `tsc` time, not in code review. The one escape hatch,
-   `unsafeBypass`, must emit an `AuditEntry`.
-4. **Providers** (`src/providers/`) put *only placeholders* on the wire.
+   provider fails at `tsc` time, not in code review. `assertApproved` re-checks the
+   capability at runtime; the one escape hatch, `unsafeBypass`, must emit an `AuditEntry`.
+5. **Providers** (`src/providers/`) put *only placeholders* on the wire.
    `makeProvider()` picks `OpenRouterProvider` (OpenAI-compatible) when an API key is
    configured, else `NoLLMProvider` — an offline echo so the whole loop runs cold.
-5. **`rehydrate()`** (`src/rehydrate.ts`) walks the reply's placeholders and restores
-   real values from the vault, locally, after the response arrives.
+6. **`rehydrate()`** (`src/rehydrate.ts`) walks the reply's placeholders and restores
+   real values from the vault — locally, after the response arrives, bound to the
+   payload's vault so a wrong-vault restore fails closed.
 
 ## Module map — 1:1 with `src/`
 
@@ -53,7 +58,7 @@ model's reply is rehydrated locally, so real values never cross the wire.
   regex/checksum/dictionary — same input, same spans, testable offline. The contextual
   NER tier that would widen recall is a deferred, off-by-default adapter (see the
   README roadmap).
-- **A payload is earned, not forged.** The brand factory (`mintRedactedPayload`) is not
+- **A payload is earned, not forged.** The brand factory (`mintPendingRedaction`) is not
   exported from the barrel; test fixtures live behind `@edgeproc/privacy-core/testing`.
 - **The guarantee is tested at the wire.** The Playwright e2e intercepts the real
   outbound request and asserts only placeholders cross — the same proof a user gets

@@ -15,10 +15,22 @@
 export { detect } from "./detect/detector.js";
 // The egress boundary.
 export {
+  approve,
+  assertApproved,
+  guardedProvider,
   type LlmProvider,
+  type PendingRedaction,
   type RedactedPayload,
   unsafeBypass,
 } from "./egress.js";
+// Typed fail-closed errors.
+export {
+  ForgedPayloadError,
+  PlaceholderCollisionError,
+  UnapprovedPayloadError,
+  UnresolvedPlaceholderError,
+  VaultMismatchError,
+} from "./errors.js";
 export {
   makeProvider,
   type ProviderConfig,

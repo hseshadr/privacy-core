@@ -4,10 +4,11 @@ import { expect, test } from "@playwright/test";
  * The wow loop, automated in a real (headless) browser, driving the demo app
  * (examples/demo) which consumes ONLY the library's public API.
  *
- * We drive the OpenRouter provider path under a dummy key and intercept the
- * outbound request with `page.route`, so NOTHING leaves the machine. The
- * interceptor is the network-boundary proof: it inspects the exact bytes the
- * app puts on the wire and asserts only placeholders cross it.
+ * We drive the OpenRouter provider path (VITE_USE_OPENROUTER=1, which routes
+ * through the same-origin dev proxy) and intercept the request with `page.route`
+ * BEFORE it reaches the proxy, so NOTHING leaves the machine. The interceptor is
+ * the network-boundary proof: it inspects the exact bytes the app puts on the
+ * wire and asserts only placeholders cross it.
  */
 
 /** Raw PII from SYNTHETIC_STATEMENT — none of these may ever hit the wire. */
@@ -35,7 +36,7 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
   // Register the interceptor BEFORE goto so it catches the send. The canned
   // OpenAI-compatible reply echoes placeholders so local rehydration has
   // tokens to restore.
-  await page.route("https://openrouter.ai/**", async (route) => {
+  await page.route("**/openrouter/**", async (route) => {
     wireBody = route.request().postData() ?? "";
 
     // NETWORK-BOUNDARY PROOF: placeholders present, raw PII absent.
@@ -74,6 +75,8 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
     await expect(wire).not.toContainText(raw);
   }
 
+  // The send button IS the explicit approval step — say so on its face.
+  await expect(page.locator("#send")).toContainText("Approve");
   await page.locator("#send").click();
 
   // Wait for the loop to finish.
@@ -88,5 +91,7 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
   await expect(answer).toContainText("Ada Lovelace");
   await expect(answer).toContainText("$1,482.10");
 
-  await page.screenshot({ path: "docs/wow.png", fullPage: true });
+  // Write to the gitignored artifacts dir so test runs never churn the tree.
+  // The committed README hero (docs/wow.png) is a stable, decoupled snapshot.
+  await page.screenshot({ path: "test-results/wow.png", fullPage: true });
 });

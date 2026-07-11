@@ -3,10 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Headless-chromium e2e gate for the redact → send → rehydrate loop.
  *
- * The demo server is booted with a DUMMY OpenRouter key so the app selects the
- * OpenRouter provider path; the test intercepts the outbound request with
- * `page.route`, so nothing actually leaves the machine. The key only selects a
- * code path — it is never a real secret.
+ * The demo server is booted with VITE_USE_OPENROUTER=1 so the app selects the
+ * OpenRouter path (via its same-origin dev proxy); the test intercepts the
+ * request with `page.route` before it reaches the proxy, so nothing actually
+ * leaves the machine. No API key is set — the interceptor stands in for the
+ * network, and the real key never enters the browser in any case.
  */
 export default defineConfig({
   testDir: "e2e",
@@ -27,7 +28,7 @@ export default defineConfig({
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     env: {
-      VITE_OPENROUTER_API_KEY: "sk-e2e-dummy",
+      VITE_USE_OPENROUTER: "1",
       VITE_OPENROUTER_MODEL: "openai/gpt-4o-mini",
     },
   },

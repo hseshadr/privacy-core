@@ -8,6 +8,9 @@ export interface ProviderConfig {
   // `string | undefined` — pass directly under exactOptionalPropertyTypes.
   readonly apiKey?: string | undefined;
   readonly model?: string | undefined;
+  // Override the chat/completions URL — e.g. a same-origin dev proxy that keeps
+  // the API key server-side instead of shipping it to the browser.
+  readonly endpoint?: string | undefined;
 }
 
 /** A live provider plus a label for the UI to show which one is selected. */
@@ -28,7 +31,11 @@ export function makeProvider(config: ProviderConfig = {}): SelectedProvider {
   const model = config.model ?? DEFAULT_MODEL;
   if (config.apiKey?.trim()) {
     return {
-      provider: new OpenRouterProvider({ apiKey: config.apiKey, model }),
+      provider: new OpenRouterProvider({
+        apiKey: config.apiKey,
+        model,
+        endpoint: config.endpoint,
+      }),
       label: `OpenRouter · ${model}`,
     };
   }

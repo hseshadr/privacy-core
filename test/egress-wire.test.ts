@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OpenRouterProvider, redactForEgress, Vault } from "../src/index.js";
+import {
+  approve,
+  OpenRouterProvider,
+  redactForEgress,
+  Vault,
+} from "../src/index.js";
 import { SYNTHETIC_STATEMENT } from "../src/testing.js";
 
 // The raw PII values planted in the synthetic statement. NONE may appear on the wire.
@@ -30,7 +35,10 @@ describe("HEADLINE: the network-tab proof, automated", () => {
     );
 
     const vault = new Vault();
-    const payload = await redactForEgress(SYNTHETIC_STATEMENT, vault);
+    const payload = approve(
+      await redactForEgress(SYNTHETIC_STATEMENT, vault),
+      () => {},
+    );
 
     const provider = new OpenRouterProvider({
       apiKey: "test-key-not-real",

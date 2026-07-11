@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **Approval is now an explicit step, never a side effect.** `redactForEgress`
+  returns a `PendingRedaction` (a review proposal — not sendable) instead of a
+  `RedactedPayload`; the new `approve(pending, audit?)` step is the only way to
+  mint the sendable capability, and it emits an `"approve"` audit entry. A
+  zero-detection result no longer auto-approves: "the detector found nothing"
+  is not "a reviewer approved this". Migration:
+  `provider.complete(await redactForEgress(raw, vault))` →
+  `provider.complete(approve(await redactForEgress(raw, vault)))`.
+  `approve()` rejects hand-built pendings with the typed `ForgedPayloadError`.
+- **The capability is now unforgeable at runtime, not just in the type
+  system.** Every approved payload is registered by identity in a
+  module-private `WeakSet`; every provider adapter calls the new
+  `assertApproved()` before doing anything, so a structurally identical
+  hand-built payload (or a spread-clone of a real one) is rejected with the
+  typed `UnapprovedPayloadError` before any network call. Payloads and
+  pendings are frozen, closing the mutate-after-approval hole. Custom
+  `LlmProvider` implementations should call `assertApproved()` first —
+  it is exported for exactly that.
+- **Reversibility failures now fail closed with typed errors.**
+  `redactForEgress` throws `PlaceholderCollisionError` when the input already
+  contains placeholder-shaped text (`[CARD_1]`) — previously such text passed
+  through and `rehydrate` would silently substitute vault values into text
+  that never contained them. `rehydrate` accepts the payload's `vaultRef` as
+  an optional third argument and throws `VaultMismatchError` when handed the
+  wrong vault instead of silently restoring wrong/missing values (the demo
+  passes it).
+
 ### Added
 
 - `LICENSE` file (MIT — the license the package always claimed), `SECURITY.md`,

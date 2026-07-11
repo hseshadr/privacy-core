@@ -6,7 +6,7 @@ describe("redact -> rehydrate round-trip", () => {
   it("restores the exact original string", async () => {
     const vault = new Vault();
     const payload = await redactForEgress(SYNTHETIC_STATEMENT, vault);
-    const restored = rehydrate(payload.redactedText, vault);
+    const restored = rehydrate(payload.redactedText, vault, payload.vaultRef);
     expect(restored).toBe(SYNTHETIC_STATEMENT);
   });
 
@@ -31,7 +31,7 @@ describe("redact -> rehydrate round-trip", () => {
     const name = payload.redactedText.match(/\[NAME_\d+\]/)?.[0];
     if (!amount || !name) throw new Error("expected planted placeholders");
     const reply = `The charge ${amount} was made by ${name}.`;
-    expect(rehydrate(reply, vault)).toBe(
+    expect(rehydrate(reply, vault, payload.vaultRef)).toBe(
       "The charge $1,482.10 was made by Ada Lovelace.",
     );
   });

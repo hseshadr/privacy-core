@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_OPENROUTER_API_KEY?: string;
+  /** Opt into the real OpenRouter path via the same-origin dev proxy ("1"). */
+  readonly VITE_USE_OPENROUTER?: string;
   readonly VITE_OPENROUTER_MODEL?: string;
 }
 

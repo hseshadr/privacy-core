@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  approve,
   NoLLMProvider,
   type RedactedPayload,
   redactForEgress,
@@ -8,18 +9,21 @@ import {
 } from "../src/index.js";
 
 describe("Egress Guard", () => {
-  it("the redaction pipeline is the only legitimate constructor of a RedactedPayload", async () => {
+  it("redact + explicit approve is the only legitimate path to a RedactedPayload", async () => {
     const vault = new Vault();
-    const payload = await redactForEgress("Pay Ada Lovelace now.", vault);
-    expect(payload.__brand).toBe("RedactedPayload");
+    const pending = await redactForEgress("Pay Ada Lovelace now.", vault);
+    const payload = approve(pending, () => {});
     expect(payload.approvedAt).toBeTypeOf("number");
     // The redacted text must not contain the raw name.
     expect(payload.redactedText).not.toContain("Ada Lovelace");
   });
 
-  it("complete() accepts a real RedactedPayload and runs the loop", async () => {
+  it("complete() accepts a real approved RedactedPayload and runs the loop", async () => {
     const vault = new Vault();
-    const payload = await redactForEgress("Pay Ada Lovelace now.", vault);
+    const payload = approve(
+      await redactForEgress("Pay Ada Lovelace now.", vault),
+      () => {},
+    );
     const provider = new NoLLMProvider();
     const res = await provider.complete(payload);
     expect(res.redactedText).toContain("[NAME_1]");
@@ -32,7 +36,6 @@ describe("Egress Guard", () => {
       "demo override",
       auditSink,
     );
-    expect(bypassed.__brand).toBe("RedactedPayload");
     expect(bypassed.redactedText).toBe("raw bank statement"); // raw, on purpose
     expect(auditSink).toHaveBeenCalledWith(
       expect.objectContaining({

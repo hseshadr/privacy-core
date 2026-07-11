@@ -1,10 +1,14 @@
-import type { LlmProvider, RedactedPayload } from "../egress.js";
+import {
+  assertApproved,
+  type LlmProvider,
+  type RedactedPayload,
+} from "../egress.js";
 import type { RedactedResponse } from "../types.js";
 
 export interface OpenRouterConfig {
   readonly apiKey: string;
   readonly model: string;
-  readonly endpoint?: string;
+  readonly endpoint?: string | undefined;
 }
 
 const DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -30,6 +34,8 @@ export class OpenRouterProvider implements LlmProvider {
   constructor(private readonly cfg: OpenRouterConfig) {}
 
   async complete(payload: RedactedPayload): Promise<RedactedResponse> {
+    // Runtime guard: a structurally forged payload never reaches the wire.
+    assertApproved(payload);
     const body = JSON.stringify({
       model: this.cfg.model,
       messages: [

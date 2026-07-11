@@ -36,7 +36,7 @@ docs/           ARCHITECTURE.md, QUICKSTART.md, diagrams/ (d2 + rendered svg)
 
 - **Type-enforced Egress Guard is the moat.** Providers accept only the branded
   `RedactedPayload`; `redactForEgress` is its only public constructor. Handing raw
-  text to a provider is a *compile error*. `mintRedactedPayload` never leaves the
+  text to a provider is a *compile error*. `mintPendingRedaction` never leaves the
   internal module; fixtures never leave `./testing`.
 - **Redaction is reversible.** Same value → same typed placeholder (`[CARD_1]`);
   `rehydrate` restores real values locally, after the reply, on-device.
