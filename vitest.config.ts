@@ -8,6 +8,12 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["src/testing.ts"],
+      // ENGINEERING-STANDARDS §2 TypeScript floor (edge-reco's numbers).
+      thresholds: {
+        lines: 90,
+        functions: 90,
+        branches: 85,
+      },
     },
   },
 });
