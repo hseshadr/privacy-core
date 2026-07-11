@@ -8,7 +8,7 @@ import type { RedactedResponse } from "../types.js";
 export interface OpenRouterConfig {
   readonly apiKey: string;
   readonly model: string;
-  readonly endpoint?: string;
+  readonly endpoint?: string | undefined;
 }
 
 const DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";

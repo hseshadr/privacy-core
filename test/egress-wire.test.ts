@@ -35,7 +35,10 @@ describe("HEADLINE: the network-tab proof, automated", () => {
     );
 
     const vault = new Vault();
-    const payload = approve(await redactForEgress(SYNTHETIC_STATEMENT, vault));
+    const payload = approve(
+      await redactForEgress(SYNTHETIC_STATEMENT, vault),
+      () => {},
+    );
 
     const provider = new OpenRouterProvider({
       apiKey: "test-key-not-real",

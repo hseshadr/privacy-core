@@ -43,6 +43,7 @@ describe("runtime-unforgeable capability (identity registry, not just types)", (
   it("a structural CLONE of a genuinely approved payload is rejected — identity, not shape", async () => {
     const payload = approve(
       await redactForEgress("Pay Ada Lovelace.", new Vault()),
+      () => {},
     );
     const clone = { ...payload };
     await expect(
@@ -53,6 +54,7 @@ describe("runtime-unforgeable capability (identity registry, not just types)", (
   it("approved payloads are frozen — text cannot be swapped after approval", async () => {
     const payload = approve(
       await redactForEgress("Pay Ada Lovelace.", new Vault()),
+      () => {},
     );
     expect(Object.isFrozen(payload)).toBe(true);
   });

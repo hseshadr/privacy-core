@@ -35,6 +35,7 @@ describe("fail-closed reversibility", () => {
     const wrongVault = new Vault();
     const payload = approve(
       await redactForEgress("Email ada.lovelace@example.com please.", vaultA),
+      () => {},
     );
     expect(() =>
       rehydrate(payload.redactedText, wrongVault, payload.vaultRef),
@@ -45,6 +46,7 @@ describe("fail-closed reversibility", () => {
     const vault = new Vault();
     const payload = approve(
       await redactForEgress("Email ada.lovelace@example.com please.", vault),
+      () => {},
     );
     expect(rehydrate(payload.redactedText, vault, payload.vaultRef)).toContain(
       "ada.lovelace@example.com",

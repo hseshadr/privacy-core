@@ -15,9 +15,11 @@ raw text, the exact redacted wire payload, and — after **Send** — the locall
 rehydrated answer. With no key set, the offline echo provider (`NoLLMProvider`) is
 used, so the whole loop runs cold.
 
-To call a real model, copy `.env.example` → `examples/demo/.env` and set
-`VITE_OPENROUTER_API_KEY`. Either way, **only placeholders cross the wire** — verify
-it yourself in the browser's network tab.
+To call a real model, copy `.env.example` → `examples/demo/.env`, set
+`OPENROUTER_API_KEY`, and add `VITE_USE_OPENROUTER=1`. The demo then routes through
+a same-origin dev proxy that injects the key server-side — it never reaches the
+browser. Either way, **only placeholders cross the wire** — verify it yourself in
+the browser's network tab.
 
 ## Prove it headlessly
 
@@ -26,8 +28,8 @@ pnpm exec playwright install --with-deps chromium   # first time only
 pnpm test:e2e
 ```
 
-Drives the demo in real Chromium, intercepts the outbound request, and asserts only
-placeholders crossed (regenerates `docs/wow.png`).
+Drives the demo in real Chromium, intercepts the request, and asserts only
+placeholders crossed (the screenshot lands in the gitignored `test-results/`).
 
 ## Run the full quality gate
 

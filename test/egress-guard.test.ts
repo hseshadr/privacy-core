@@ -12,7 +12,7 @@ describe("Egress Guard", () => {
   it("redact + explicit approve is the only legitimate path to a RedactedPayload", async () => {
     const vault = new Vault();
     const pending = await redactForEgress("Pay Ada Lovelace now.", vault);
-    const payload = approve(pending);
+    const payload = approve(pending, () => {});
     expect(payload.approvedAt).toBeTypeOf("number");
     // The redacted text must not contain the raw name.
     expect(payload.redactedText).not.toContain("Ada Lovelace");
@@ -22,6 +22,7 @@ describe("Egress Guard", () => {
     const vault = new Vault();
     const payload = approve(
       await redactForEgress("Pay Ada Lovelace now.", vault),
+      () => {},
     );
     const provider = new NoLLMProvider();
     const res = await provider.complete(payload);

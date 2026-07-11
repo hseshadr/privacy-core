@@ -17,6 +17,7 @@ export { detect } from "./detect/detector.js";
 export {
   approve,
   assertApproved,
+  guardedProvider,
   type LlmProvider,
   type PendingRedaction,
   type RedactedPayload,

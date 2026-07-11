@@ -32,16 +32,23 @@ worth probing:
   `RedactedPayload` (`src/egress.ts`), whose sole legitimate constructor is
   `redactForEgress` (`src/redact.ts`). A raw `string` is not assignable — handing raw
   text to a provider is a **compile error**, not a runtime check. The brand factory
-  (`mintRedactedPayload`) is deliberately not exported from the public barrel.
+  (`mintPendingRedaction`) is deliberately not exported from the public barrel.
 - **The reversible vault.** `Vault` (`src/vault.ts`) maps typed placeholders
   (`[CARD_1]`, `[NAME_2]`) back to real values **in memory only** (v0, by design — it
   clears on reload). Rehydration runs on-device after the reply; real values never
-  leave the machine.
+  leave the machine. Under a bound vault, an unresolvable placeholder fails closed
+  (`UnresolvedPlaceholderError`) rather than leaving a lookalike token in place.
 - **The audited escape hatch.** `unsafeBypass` is the only way to hand raw text to a
   provider, and it must emit an `AuditEntry`. A bypass that leaves no audit trail is
   a vulnerability.
 - **The e2e wire proof.** A Playwright test intercepts the outbound request and
   asserts only placeholders cross the wire; that guarantee is the product.
+- **No API key in the browser.** The library is env-agnostic — a host passes its
+  own key in. The bundled Vite demo deliberately keeps `OPENROUTER_API_KEY`
+  **server-side**: it is read only by a same-origin dev proxy (`vite.config.ts`)
+  and injected into the outbound request, never `VITE_`-prefixed and so never
+  embedded in the client bundle. Shipping a real key to the browser would be a
+  bug; report it as one.
 
 In-scope reports include: any way to construct or forge a `RedactedPayload` outside
 `redactForEgress`; any path that puts raw (un-redacted) text on the wire; a bypass

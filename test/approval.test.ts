@@ -53,6 +53,8 @@ describe("explicit approval (a capability is earned by review, never implied)", 
       vaultRef: { id: "fake" },
       placeholders: [],
     };
-    expect(() => approve(forgedPending as never)).toThrow(ForgedPayloadError);
+    expect(() => approve(forgedPending as never, () => {})).toThrow(
+      ForgedPayloadError,
+    );
   });
 });

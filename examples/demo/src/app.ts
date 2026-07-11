@@ -19,9 +19,15 @@ interface Refs {
   readonly send: HTMLButtonElement;
 }
 
+// The browser NEVER holds the OpenRouter key. When VITE_USE_OPENROUTER=1, the
+// app talks to the same-origin dev proxy (see vite.config.ts), which injects the
+// server-side key. The `apiKey` below is only a non-secret sentinel that selects
+// the OpenRouter code path; the endpoint points at the local proxy.
+const useOpenRouter = import.meta.env.VITE_USE_OPENROUTER === "1";
 const { provider, label } = makeProvider({
-  apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+  apiKey: useOpenRouter ? "via-dev-proxy" : undefined,
   model: import.meta.env.VITE_OPENROUTER_MODEL,
+  endpoint: useOpenRouter ? "/openrouter/api/v1/chat/completions" : undefined,
 });
 
 function escapeHtml(s: string): string {
@@ -75,7 +81,9 @@ async function runLoop(refs: Refs): Promise<void> {
     // The click on "Approve & send" IS the explicit review action: the user
     // has seen the redaction set + exact wire payload above. Nothing is
     // sendable until this line runs — zero detections included.
-    const payload = approve(pending);
+    // The audit sink is REQUIRED — an approval no one can observe is not granted.
+    // A real app persists this AuditEntry; the demo keeps the console clean.
+    const payload = approve(pending, () => {});
     refs.status.textContent = `Approved. Sending redacted text to ${label}…`;
     const res = await provider.complete(payload);
     // Bind the restore to the vault the payload was redacted with.

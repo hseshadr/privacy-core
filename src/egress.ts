@@ -90,12 +90,14 @@ export function mintPendingRedaction(
  * sendable. Approval is a deliberate human/reviewer action, never a side
  * effect: even a zero-detection result passes through here. It refuses any
  * object the pipeline did not mint (a hand-built "pending" would smuggle
- * unreviewed text past the guard) and emits an audit entry so every approval
- * is observable.
+ * unreviewed text past the guard).
+ *
+ * The `audit` sink is REQUIRED — an approval that no one can observe is not
+ * an approval this boundary will grant. (Same stance as {@link unsafeBypass}.)
  */
 export function approve(
   pending: PendingRedaction,
-  audit?: AuditSink,
+  audit: AuditSink,
 ): RedactedPayload {
   if (!mintedPending.has(pending)) {
     throw new ForgedPayloadError(
@@ -109,12 +111,28 @@ export function approve(
     approvedAt: Date.now(),
   }) as RedactedPayload;
   approvedPayloads.add(payload);
-  audit?.({
+  audit({
     kind: "approve",
     at: payload.approvedAt,
     placeholders: pending.placeholders,
   });
   return payload;
+}
+
+/**
+ * Wrap any {@link LlmProvider} so the runtime egress guard runs at ONE
+ * chokepoint before the inner provider ever sees the payload. TypeScript's
+ * brand stops a raw string at compile time, but a hand-rolled or third-party
+ * provider could still forget to call {@link assertApproved} at runtime — this
+ * wrapper makes that impossible for any provider obtained through it.
+ */
+export function guardedProvider(inner: LlmProvider): LlmProvider {
+  return {
+    async complete(payload) {
+      assertApproved(payload);
+      return inner.complete(payload);
+    },
+  };
 }
 
 /**

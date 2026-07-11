@@ -37,7 +37,7 @@ regression test.
 
 - **The Egress Guard is the moat.** `redactForEgress` stays the only public
   constructor of `RedactedPayload`; providers accept only the brand. Never export
-  `mintRedactedPayload` from the main barrel.
+  `mintPendingRedaction` from the main barrel.
 - **Test fixtures live behind `./testing`** — never in the production barrel
   (`src/index.ts`), so a fixture can't ship by accident.
 - **`unsafeBypass` always audits.** The escape hatch exists to be visible.
