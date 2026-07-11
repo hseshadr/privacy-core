@@ -1,0 +1,53 @@
+direction: down
+
+title: |md
+  # The redact → send → rehydrate loop
+| {near: top-center}
+
+raw: "Raw text (on-device)\nbank statement, medical note, contract" {
+  style.fill: "#f8e8e8"
+}
+
+detect: "detect()\nsrc/detect/ — regex + checksums + dictionaries" {
+  style.fill: "#e8f4f8"
+}
+
+vault: "Vault\nsrc/vault.ts — reversible token ↔ value map (in-memory, v0)" {
+  style.fill: "#f0e8f8"
+}
+
+redact: "redactForEgress()\nsrc/redact.ts — the ONLY RedactedPayload constructor" {
+  style.fill: "#e8f4f8"
+}
+
+guard: "Egress Guard (the moat)\nsrc/egress.ts — branded RedactedPayload + LlmProvider" {
+  style.fill: "#f8f0e8"
+}
+
+providers: "Providers — src/providers/" {
+  style.fill: "#e8f8e8"
+  nollm: "NoLLMProvider\noffline echo, runs cold"
+  openrouter: "OpenRouterProvider\nOpenAI-compatible"
+  factory: "makeProvider()\nenv-driven selector"
+  factory -> nollm
+  factory -> openrouter
+}
+
+rehydrate: "rehydrate()\nsrc/rehydrate.ts — restore real values locally" {
+  style.fill: "#e8f4f8"
+}
+
+restored: "Restored reply (on-device)\nreal values never crossed the wire" {
+  style.fill: "#e8f8e8"
+}
+
+raw -> detect: "PII spans"
+detect -> redact
+redact -> vault: "store value,\nmint [CARD_1]"
+redact -> guard: "branded\nRedactedPayload"
+guard -> providers: "placeholders only\n(raw string = compile error)" {
+  style.bold: true
+}
+providers -> rehydrate: "redacted reply"
+vault -> rehydrate: "token → value"
+rehydrate -> restored
