@@ -1,4 +1,8 @@
-import type { LlmProvider, RedactedPayload } from "../egress.js";
+import {
+  assertApproved,
+  type LlmProvider,
+  type RedactedPayload,
+} from "../egress.js";
 import type { RedactedResponse } from "../types.js";
 
 /**
@@ -9,6 +13,8 @@ import type { RedactedResponse } from "../types.js";
  */
 export class NoLLMProvider implements LlmProvider {
   async complete(payload: RedactedPayload): Promise<RedactedResponse> {
+    // Runtime guard: even the offline echo refuses a forged payload.
+    assertApproved(payload);
     const tokens = [...payload.redactedText.matchAll(/\[[A-Z]+_\d+\]/g)].map(
       (m) => m[0],
     );

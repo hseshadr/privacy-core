@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `provider.complete(await redactForEgress(raw, vault))` →
   `provider.complete(approve(await redactForEgress(raw, vault)))`.
   `approve()` rejects hand-built pendings with the typed `ForgedPayloadError`.
+- **The capability is now unforgeable at runtime, not just in the type
+  system.** Every approved payload is registered by identity in a
+  module-private `WeakSet`; every provider adapter calls the new
+  `assertApproved()` before doing anything, so a structurally identical
+  hand-built payload (or a spread-clone of a real one) is rejected with the
+  typed `UnapprovedPayloadError` before any network call. Payloads and
+  pendings are frozen, closing the mutate-after-approval hole. Custom
+  `LlmProvider` implementations should call `assertApproved()` first —
+  it is exported for exactly that.
 
 ### Added
 

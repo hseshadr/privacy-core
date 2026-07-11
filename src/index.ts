@@ -16,13 +16,14 @@ export { detect } from "./detect/detector.js";
 // The egress boundary.
 export {
   approve,
+  assertApproved,
   type LlmProvider,
   type PendingRedaction,
   type RedactedPayload,
   unsafeBypass,
 } from "./egress.js";
 // Typed fail-closed errors.
-export { ForgedPayloadError } from "./errors.js";
+export { ForgedPayloadError, UnapprovedPayloadError } from "./errors.js";
 export {
   makeProvider,
   type ProviderConfig,

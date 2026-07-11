@@ -1,4 +1,4 @@
-import { ForgedPayloadError } from "./errors.js";
+import { ForgedPayloadError, UnapprovedPayloadError } from "./errors.js";
 import type { AuditSink, VaultRef } from "./types.js";
 
 /**
@@ -50,6 +50,28 @@ export interface LlmProvider {
 const mintedPending = new WeakSet<object>();
 
 /**
+ * Module-private: every payload the guard actually approved. A WeakSet keyed
+ * by object IDENTITY — callers cannot reproduce membership by building a
+ * structurally identical object, and entries vanish with the payloads.
+ */
+const approvedPayloads = new WeakSet<object>();
+
+/**
+ * Runtime half of the egress guard. Every provider adapter MUST call this
+ * before doing anything with a payload; it rejects any object that was not
+ * minted by {@link approve} or {@link unsafeBypass} — TypeScript branding
+ * alone cannot stop a plain-JS caller, this check does.
+ */
+export function assertApproved(payload: RedactedPayload): void {
+  if (!approvedPayloads.has(payload)) {
+    throw new UnapprovedPayloadError(
+      "payload was not approved by the egress guard — providers only accept " +
+        "the capability minted by approve() (or the audited unsafeBypass)",
+    );
+  }
+}
+
+/**
  * Internal factory used by the redact pipeline. Intentionally NOT re-exported
  * from the public barrel — a pending is earned from detection, not built.
  */
@@ -86,6 +108,7 @@ export function approve(
     vaultRef: pending.vaultRef,
     approvedAt: Date.now(),
   }) as RedactedPayload;
+  approvedPayloads.add(payload);
   audit?.({
     kind: "approve",
     at: payload.approvedAt,
@@ -105,9 +128,11 @@ export function unsafeBypass(
   audit: AuditSink,
 ): RedactedPayload {
   audit({ kind: "unsafe-bypass", at: Date.now(), reason });
-  return Object.freeze({
+  const payload = Object.freeze({
     redactedText: raw,
     vaultRef: { id: "unsafe-no-vault" },
     approvedAt: Date.now(),
   }) as RedactedPayload;
+  approvedPayloads.add(payload);
+  return payload;
 }

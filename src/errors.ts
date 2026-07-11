@@ -14,3 +14,17 @@ export class ForgedPayloadError extends Error {
     this.name = "ForgedPayloadError";
   }
 }
+
+/**
+ * Thrown by every provider adapter (via {@link assertApproved}) when handed a
+ * payload the egress guard never approved — e.g. a structurally identical
+ * object hand-built by the caller. The capability is checked by IDENTITY in a
+ * module-private registry, so it holds at runtime in plain JS, not only in the
+ * type system.
+ */
+export class UnapprovedPayloadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnapprovedPayloadError";
+  }
+}
