@@ -74,6 +74,8 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
     await expect(wire).not.toContainText(raw);
   }
 
+  // The send button IS the explicit approval step — say so on its face.
+  await expect(page.locator("#send")).toContainText("Approve");
   await page.locator("#send").click();
 
   // Wait for the loop to finish.

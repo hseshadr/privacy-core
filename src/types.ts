@@ -27,7 +27,7 @@ export interface VaultRef {
 
 /** An audit record — metadata only, never raw PII (except the explicit bypass case). */
 export interface AuditEntry {
-  readonly kind: "redact" | "unsafe-bypass";
+  readonly kind: "redact" | "approve" | "unsafe-bypass";
   readonly at: number;
   readonly placeholders?: readonly string[];
   readonly reason?: string;

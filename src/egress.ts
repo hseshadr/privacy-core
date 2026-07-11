@@ -1,56 +1,102 @@
+import { ForgedPayloadError } from "./errors.js";
 import type { AuditSink, VaultRef } from "./types.js";
 
 /**
- * The egress boundary, expressed as a type.
+ * The egress boundary, expressed as a capability earned in two explicit steps:
  *
- * `RedactedPayload` is a branded type: the brand is a COMPILE-TIME-ONLY phantom
- * field (no runtime representation), so the only way to obtain a value of this
- * type is through this module's factory. A raw `string` — or a hand-rolled
- * object literal that merely sets `redactedText` — is not assignable here, which
- * is exactly what makes "raw text reaching a provider" a type error.
+ *  1. `redactForEgress` mints a {@link PendingRedaction} — a review PROPOSAL.
+ *     It is not sendable; no provider accepts it. Zero detections do NOT relax
+ *     this: an empty redaction set still requires the explicit review step,
+ *     because "the detector found nothing" is not the same as "a reviewer
+ *     approved this content to leave the device".
+ *  2. `approve` — the explicit review action — converts a pipeline-minted
+ *     pending into a {@link RedactedPayload}, the sendable capability.
+ *
+ * Both types carry a compile-time phantom brand (a raw `string` or hand-rolled
+ * object literal is not assignable), and every value minted here is registered
+ * in a module-private WeakSet so the capability also holds at RUNTIME in plain
+ * JS — a structurally identical forgery is rejected by {@link approve} and by
+ * every provider adapter (via {@link assertApproved}).
  */
 declare const brand: unique symbol;
 
-interface Branded {
-  readonly [brand]: "RedactedPayload";
+interface Branded<B extends string> {
+  readonly [brand]: B;
 }
 
-export type RedactedPayload = Branded & {
-  readonly __brand: "RedactedPayload";
+/** A redaction proposal awaiting explicit review. NOT sendable. */
+export type PendingRedaction = Branded<"PendingRedaction"> & {
+  readonly redactedText: string;
+  readonly vaultRef: VaultRef;
+  /** The placeholder tokens the reviewer is being asked to approve. */
+  readonly placeholders: readonly string[];
+};
+
+/** The sendable capability: reviewed, redacted content — never raw content. */
+export type RedactedPayload = Branded<"RedactedPayload"> & {
   readonly redactedText: string;
   readonly vaultRef: VaultRef;
   readonly approvedAt: number;
 };
 
-/** The egress boundary: providers accept ONLY a branded RedactedPayload. */
+/** The egress boundary: providers accept ONLY an approved RedactedPayload. */
 export interface LlmProvider {
   complete(
     payload: RedactedPayload,
   ): Promise<import("./types.js").RedactedResponse>;
 }
 
+/** Module-private: every pending the redaction pipeline actually minted. */
+const mintedPending = new WeakSet<object>();
+
 /**
- * Internal-only factory for the brand. Used by the redact pipeline and the
- * audited bypass to mint payloads. It is intentionally NOT re-exported from the
- * public barrel — callers cannot forge a payload, only earn one.
+ * Internal factory used by the redact pipeline. Intentionally NOT re-exported
+ * from the public barrel — a pending is earned from detection, not built.
  */
-export function mintRedactedPayload(
+export function mintPendingRedaction(
   redactedText: string,
   vaultRef: VaultRef,
+  placeholders: readonly string[],
+): PendingRedaction {
+  const pending = Object.freeze({ redactedText, vaultRef, placeholders });
+  mintedPending.add(pending);
+  return pending as PendingRedaction;
+}
+
+/**
+ * THE explicit approval step — the only way a PendingRedaction becomes
+ * sendable. Approval is a deliberate human/reviewer action, never a side
+ * effect: even a zero-detection result passes through here. It refuses any
+ * object the pipeline did not mint (a hand-built "pending" would smuggle
+ * unreviewed text past the guard) and emits an audit entry so every approval
+ * is observable.
+ */
+export function approve(
+  pending: PendingRedaction,
+  audit?: AuditSink,
 ): RedactedPayload {
-  // The phantom `brand` field exists only in the type system; at runtime we
-  // build the plain object and assert the brand here — the single trusted spot.
-  return {
-    __brand: "RedactedPayload",
-    redactedText,
-    vaultRef,
+  if (!mintedPending.has(pending)) {
+    throw new ForgedPayloadError(
+      "approve() only accepts a PendingRedaction minted by redactForEgress — " +
+        "hand-built objects are rejected so unreviewed text cannot be approved",
+    );
+  }
+  const payload = Object.freeze({
+    redactedText: pending.redactedText,
+    vaultRef: pending.vaultRef,
     approvedAt: Date.now(),
-  } as RedactedPayload;
+  }) as RedactedPayload;
+  audit?.({
+    kind: "approve",
+    at: payload.approvedAt,
+    placeholders: pending.placeholders,
+  });
+  return payload;
 }
 
 /**
  * The explicit, named, audited escape hatch — the ONLY way raw text can be
- * branded for a provider without going through detection. It cannot be silent:
+ * made sendable without going through detection + review. It cannot be silent:
  * it always emits an audit entry recording the human-supplied reason.
  */
 export function unsafeBypass(
@@ -59,5 +105,9 @@ export function unsafeBypass(
   audit: AuditSink,
 ): RedactedPayload {
   audit({ kind: "unsafe-bypass", at: Date.now(), reason });
-  return mintRedactedPayload(raw, { id: "unsafe-no-vault" });
+  return Object.freeze({
+    redactedText: raw,
+    vaultRef: { id: "unsafe-no-vault" },
+    approvedAt: Date.now(),
+  }) as RedactedPayload;
 }

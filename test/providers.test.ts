@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  approve,
   NoLLMProvider,
   OpenRouterProvider,
   redactForEgress,
@@ -10,9 +11,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("NoLLMProvider (offline echo)", () => {
   it("reports 'no sensitive values' for a placeholder-free payload", async () => {
-    const payload = await redactForEgress(
-      "nothing sensitive here",
-      new Vault(),
+    const payload = approve(
+      await redactForEgress("nothing sensitive here", new Vault()),
     );
     const reply = await new NoLLMProvider().complete(payload);
     expect(reply.redactedText).toContain("no sensitive values");
@@ -27,7 +27,7 @@ describe("OpenRouterProvider", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("rate limited", { status: 429 }),
     );
-    const payload = await redactForEgress("hello", new Vault());
+    const payload = approve(await redactForEgress("hello", new Vault()));
     await expect(new OpenRouterProvider(cfg).complete(payload)).rejects.toThrow(
       /OpenRouter 429: rate limited/,
     );
@@ -40,7 +40,7 @@ describe("OpenRouterProvider", () => {
         headers: { "content-type": "application/json" },
       }),
     );
-    const payload = await redactForEgress("hello", new Vault());
+    const payload = approve(await redactForEgress("hello", new Vault()));
     const reply = await new OpenRouterProvider(cfg).complete(payload);
     expect(reply.redactedText).toBe("");
   });
@@ -54,7 +54,7 @@ describe("OpenRouterProvider", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
       );
-    const payload = await redactForEgress("hello", new Vault());
+    const payload = approve(await redactForEgress("hello", new Vault()));
     const provider = new OpenRouterProvider({
       ...cfg,
       endpoint: "https://proxy.example.test/v1/chat/completions",

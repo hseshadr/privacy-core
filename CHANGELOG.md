@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **Approval is now an explicit step, never a side effect.** `redactForEgress`
+  returns a `PendingRedaction` (a review proposal — not sendable) instead of a
+  `RedactedPayload`; the new `approve(pending, audit?)` step is the only way to
+  mint the sendable capability, and it emits an `"approve"` audit entry. A
+  zero-detection result no longer auto-approves: "the detector found nothing"
+  is not "a reviewer approved this". Migration:
+  `provider.complete(await redactForEgress(raw, vault))` →
+  `provider.complete(approve(await redactForEgress(raw, vault)))`.
+  `approve()` rejects hand-built pendings with the typed `ForgedPayloadError`.
+
 ### Added
 
 - `LICENSE` file (MIT — the license the package always claimed), `SECURITY.md`,

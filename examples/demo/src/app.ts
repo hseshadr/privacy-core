@@ -1,4 +1,5 @@
 import {
+  approve,
   detect,
   makeProvider,
   redactForEgress,
@@ -45,25 +46,29 @@ function renderSet(refs: Refs, spans: readonly Span[], vault: Vault): void {
   refs.setList.innerHTML = rows.join("");
 }
 
-/** Live preview: show the redaction set + exact wire text BEFORE send. */
+/** Live preview: show the redaction set + exact wire text BEFORE approval. */
 async function refreshPreview(refs: Refs): Promise<void> {
   const vault = new Vault();
   const spans = detect(refs.input.value);
-  const payload = await redactForEgress(refs.input.value, vault);
-  refs.wire.textContent = payload.redactedText;
+  const pending = await redactForEgress(refs.input.value, vault);
+  refs.wire.textContent = pending.redactedText;
   renderSet(refs, spans, vault);
 }
 
-/** redact → preview → send → rehydrate, with a fresh vault per run. */
+/** redact → review → APPROVE (the click) → send → rehydrate, fresh vault per run. */
 async function runLoop(refs: Refs): Promise<void> {
   refs.send.disabled = true;
   refs.status.textContent = "Redacting on-device…";
   const vault = new Vault();
   const spans = detect(refs.input.value);
-  const payload = await redactForEgress(refs.input.value, vault);
-  refs.wire.textContent = payload.redactedText;
+  const pending = await redactForEgress(refs.input.value, vault);
+  refs.wire.textContent = pending.redactedText;
   renderSet(refs, spans, vault);
-  refs.status.textContent = `Sending redacted text to ${label}…`;
+  // The click on "Approve & send" IS the explicit review action: the user has
+  // seen the redaction set + exact wire payload above. Nothing is sendable
+  // until this line runs — zero detections included.
+  const payload = approve(pending);
+  refs.status.textContent = `Approved. Sending redacted text to ${label}…`;
   try {
     const res = await provider.complete(payload);
     refs.answer.textContent = rehydrate(res.redactedText, vault);
@@ -111,12 +116,12 @@ const TEMPLATE = `
       <textarea id="input" spellcheck="false"></textarea>
     </section>
     <section>
-      <h2>2 · Preview — exactly what will leave the device</h2>
+      <h2>2 · Review &amp; approve — exactly what will leave the device</h2>
       <p class="hint">Redaction set:</p>
       <ul id="set" class="set"></ul>
       <p class="hint">Wire payload (sent verbatim — open your network tab to confirm):</p>
       <pre id="wire" class="wire"></pre>
-      <button id="send">Send redacted text →</button>
+      <button id="send">Approve &amp; send redacted text →</button>
       <p id="status" class="status"></p>
     </section>
     <section>

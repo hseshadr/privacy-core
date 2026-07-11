@@ -1,21 +1,22 @@
 import { detect } from "./detect/detector.js";
-import { mintRedactedPayload, type RedactedPayload } from "./egress.js";
+import { mintPendingRedaction, type PendingRedaction } from "./egress.js";
 import type { AuditSink } from "./types.js";
 import type { Vault } from "./vault.js";
 
 /**
- * THE ONLY legitimate constructor of a RedactedPayload.
+ * THE ONLY legitimate constructor of a PendingRedaction.
  *
- * Detects PII, writes each raw value into the vault, replaces it with a stable
- * placeholder, and brands the result so the Egress Guard will accept it. The
- * raw values never leave the vault; only the branded, placeholder-only payload
- * can be handed to a provider.
+ * Detects PII, writes each raw value into the vault, and replaces it with a
+ * stable placeholder. The result is a review PROPOSAL — it is NOT sendable.
+ * Only the explicit `approve()` step turns it into the RedactedPayload
+ * capability a provider will accept, and that holds even when detection finds
+ * nothing: zero detections never auto-approve.
  */
 export async function redactForEgress(
   raw: string,
   vault: Vault,
   audit?: AuditSink,
-): Promise<RedactedPayload> {
+): Promise<PendingRedaction> {
   const spans = detect(raw);
   // Rebuild text left-to-right, swapping each span for its vault token.
   let out = "";
@@ -30,5 +31,5 @@ export async function redactForEgress(
   }
   out += raw.slice(cursor);
   audit?.({ kind: "redact", at: Date.now(), placeholders });
-  return mintRedactedPayload(out, vault.ref);
+  return mintPendingRedaction(out, vault.ref, placeholders);
 }
