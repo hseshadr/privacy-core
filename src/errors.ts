@@ -54,3 +54,17 @@ export class VaultMismatchError extends Error {
     this.name = "VaultMismatchError";
   }
 }
+
+/**
+ * Thrown by {@link rehydrate} when a placeholder-shaped token (`[TYPE_n]`) in
+ * the reply cannot be resolved by the bound vault. Under a bound vault an
+ * unresolvable token is an anomaly — the reply was redacted with a different
+ * vault, or a model invented a placeholder — so the safe reaction is to stop,
+ * not to leave a token that merely *looks* like redaction in place.
+ */
+export class UnresolvedPlaceholderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnresolvedPlaceholderError";
+  }
+}

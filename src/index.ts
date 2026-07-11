@@ -27,6 +27,7 @@ export {
   ForgedPayloadError,
   PlaceholderCollisionError,
   UnapprovedPayloadError,
+  UnresolvedPlaceholderError,
   VaultMismatchError,
 } from "./errors.js";
 export {
