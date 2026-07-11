@@ -1,0 +1,34 @@
+# Weekly dependency CVE scan (ENGINEERING-STANDARDS §4).
+# A red scheduled run is a red repo — check with:
+#   gh run list --workflow=security-audit.yml
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Audit dependencies
+        # --audit-level moderate: fail on moderate or higher. Rationale: every
+        # dependency here is dev-only toolchain (the published lib has zero
+        # runtime deps), so low-severity advisories are noise — but a
+        # moderate+ CVE anywhere in a privacy library's toolchain is
+        # actionable and should page.
+        run: pnpm audit --audit-level moderate

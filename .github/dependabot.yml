@@ -1,0 +1,20 @@
+# Weekly, grouped dependency updates (ENGINEERING-STANDARDS §4).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      npm-dev-toolchain:
+        patterns:
+          - "*"

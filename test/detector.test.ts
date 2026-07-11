@@ -37,6 +37,15 @@ describe("Tier-1 deterministic detector", () => {
     expect(spans.filter((s) => s.type === "IBAN")).toHaveLength(0);
   });
 
+  it("drops the shorter of two same-start overlapping spans (longer wins)", () => {
+    // "Amazon@example.com" is both a MERCHANT dictionary hit and an EMAIL
+    // match starting at the same offset — the email must win, once.
+    const spans = detect("Contact Amazon@example.com today.");
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.type).toBe("EMAIL");
+    expect(spans[0]?.value).toBe("Amazon@example.com");
+  });
+
   it("returns non-overlapping spans sorted by start offset", () => {
     const spans = detect(SYNTHETIC_STATEMENT);
     for (let i = 1; i < spans.length; i++) {

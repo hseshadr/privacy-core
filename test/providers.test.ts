@@ -1,0 +1,69 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  NoLLMProvider,
+  OpenRouterProvider,
+  redactForEgress,
+  Vault,
+} from "../src/index.js";
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("NoLLMProvider (offline echo)", () => {
+  it("reports 'no sensitive values' for a placeholder-free payload", async () => {
+    const payload = await redactForEgress(
+      "nothing sensitive here",
+      new Vault(),
+    );
+    const reply = await new NoLLMProvider().complete(payload);
+    expect(reply.redactedText).toContain("no sensitive values");
+    expect(reply.redactedText).toContain("0 redacted value(s)");
+  });
+});
+
+describe("OpenRouterProvider", () => {
+  const cfg = { apiKey: "test-key-not-real", model: "openai/gpt-4o-mini" };
+
+  it("throws with status + body when the API responds non-OK", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("rate limited", { status: 429 }),
+    );
+    const payload = await redactForEgress("hello", new Vault());
+    await expect(new OpenRouterProvider(cfg).complete(payload)).rejects.toThrow(
+      /OpenRouter 429: rate limited/,
+    );
+  });
+
+  it("returns empty text when the completion has no choices", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const payload = await redactForEgress("hello", new Vault());
+    const reply = await new OpenRouterProvider(cfg).complete(payload);
+    expect(reply.redactedText).toBe("");
+  });
+
+  it("honors an explicit endpoint override", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    const payload = await redactForEgress("hello", new Vault());
+    const provider = new OpenRouterProvider({
+      ...cfg,
+      endpoint: "https://proxy.example.test/v1/chat/completions",
+    });
+    const reply = await provider.complete(payload);
+    expect(reply.redactedText).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://proxy.example.test/v1/chat/completions",
+      expect.anything(),
+    );
+  });
+});
