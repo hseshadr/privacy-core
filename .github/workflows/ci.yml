@@ -40,6 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # gitleaks-action lists the PR's commits via the API on pull_request
+      # events; without this it 403s ("Resource not accessible by integration").
+      pull-requests: read
     steps:
       - uses: actions/checkout@v5
         with:
