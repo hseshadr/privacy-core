@@ -27,6 +27,7 @@ export {
 export {
   ForgedPayloadError,
   PlaceholderCollisionError,
+  ResidualValueError,
   UnapprovedPayloadError,
   UnresolvedPlaceholderError,
   VaultMismatchError,

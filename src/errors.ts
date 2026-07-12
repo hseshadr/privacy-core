@@ -68,3 +68,18 @@ export class UnresolvedPlaceholderError extends Error {
     this.name = "UnresolvedPlaceholderError";
   }
 }
+
+/**
+ * Thrown by {@link redactForEgress} when a value the detector recognised (and
+ * wrote into the vault) still appears verbatim in the redacted output — e.g. a
+ * second, unlabelled copy of an account number that the label-gated rule only
+ * matched once. Emitting it would put a value the tool already knows is PII on
+ * the wire, so redaction fails closed instead of leaking it. The reversibility
+ * backstop is the human preview; this is the belt to that suspenders.
+ */
+export class ResidualValueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResidualValueError";
+  }
+}

@@ -1,7 +1,7 @@
 import { detect } from "./detect/detector.js";
 import { mintPendingRedaction, type PendingRedaction } from "./egress.js";
-import { PlaceholderCollisionError } from "./errors.js";
-import type { AuditSink } from "./types.js";
+import { PlaceholderCollisionError, ResidualValueError } from "./errors.js";
+import type { AuditSink, Span } from "./types.js";
 import type { Vault } from "./vault.js";
 
 /**
@@ -9,6 +9,26 @@ import type { Vault } from "./vault.js";
  * it would be indistinguishable from vault tokens after redaction.
  */
 const PLACEHOLDER_SHAPE = /\[[A-Z]+_\d+\]/;
+
+/**
+ * Fail closed if any detected value survived verbatim in the redacted output.
+ * The span-by-span rebuild only removes the ranges the detector matched, so a
+ * value that recurs where the ruleset did not independently match it (a
+ * duplicate copy of a label-gated ACCOUNT/ROUTING number) can slip through. A
+ * detected value is one the tool already vaulted as PII; emitting a verbatim
+ * copy would leak it, so refuse rather than send.
+ */
+function assertNoResidual(out: string, spans: readonly Span[]): void {
+  for (const s of spans) {
+    if (out.includes(s.value)) {
+      throw new ResidualValueError(
+        `a detected ${s.type} value survived redaction and would cross the wire ` +
+          "verbatim (a duplicate the ruleset matched only once) — refusing to " +
+          "emit a payload that leaks a value already known to be PII",
+      );
+    }
+  }
+}
 
 /**
  * THE ONLY legitimate constructor of a PendingRedaction.
@@ -44,6 +64,8 @@ export async function redactForEgress(
     cursor = s.end;
   }
   out += raw.slice(cursor);
+  // Fail closed BEFORE auditing/minting: a redact that leaks is not a redact.
+  assertNoResidual(out, spans);
   audit?.({ kind: "redact", at: Date.now(), placeholders });
   return mintPendingRedaction(out, vault.ref, placeholders);
 }
