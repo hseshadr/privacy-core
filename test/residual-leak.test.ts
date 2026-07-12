@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+import {
+  approve,
+  ResidualValueError,
+  redactForEgress,
+  Vault,
+} from "../src/index.js";
+
+/**
+ * Defence-in-depth for the redaction pipeline: a value the detector already
+ * recognised (and wrote into the vault) must never survive verbatim in the text
+ * that becomes sendable. The label-gated ACCOUNT / ROUTING rules match only the
+ * FIRST digit run after their English label, so a second, unlabelled copy of the
+ * SAME account number slips past the span-by-span rebuild and would cross the
+ * wire in the clear — a value the tool has already proven is PII. Fail closed.
+ *
+ * The residual test is WORD-BOUNDARY aware: it flags a value only when it recurs
+ * as a STANDALONE token, not when the digits merely appear inside a longer
+ * alphanumeric token (a benign order id / tracking number that shares the
+ * digits). Refusing those was a false positive; a standalone recurrence is
+ * indistinguishable from a leak and still fails closed.
+ */
+describe("residual-value fail-closed guard", () => {
+  const LEAKY = "Account number: 021000021 021000021";
+
+  it("refuses a redaction whose output still contains a detected raw value", async () => {
+    await expect(redactForEgress(LEAKY, new Vault())).rejects.toThrow(
+      ResidualValueError,
+    );
+  });
+
+  it("the known-sensitive value never reaches an approved payload's wire text", async () => {
+    let wireText = "";
+    try {
+      const pending = await redactForEgress(LEAKY, new Vault());
+      wireText = approve(pending, () => {}).redactedText;
+    } catch {
+      /* fail-closed path — nothing sendable was minted */
+    }
+    expect(wireText).not.toContain("021000021");
+  });
+
+  it("does NOT refuse a statement where every detected value appears once", async () => {
+    const clean = "Card 4242 4242 4242 4242 for Ada Lovelace at Whole Foods.";
+    const pending = await redactForEgress(clean, new Vault());
+    expect(pending.redactedText).not.toContain("4242 4242 4242 4242");
+    expect(pending.redactedText).toContain("[CARD_1]");
+  });
+});
+
+/**
+ * The confirmed leaks: the vaulted value recurs as its OWN standalone token, so
+ * a verbatim copy would cross the wire. Every one of these must fail closed.
+ */
+describe("residual guard — confirmed leaks still REFUSE", () => {
+  const LEAKS: readonly [string, string][] = [
+    // Second copy is the bare value, space/EOS delimited.
+    [
+      "duplicate account, standalone copy",
+      "Account number: 021000021 021000021",
+    ],
+    // Second copy is the bare value, sentence-delimited.
+    [
+      "account restated later in the sentence",
+      "Account number: 123456789. Please confirm 123456789 is correct.",
+    ],
+    // Second copy is the bare routing number, space-delimited.
+    [
+      "routing number restated after the label",
+      "Routing number: 021000021. Funds were sent to 021000021 today.",
+    ],
+    // The exact value appears STANDALONE ("100000000 yen"). Indistinguishable
+    // from a leak, so the fail-safe (refuse) is correct — we do NOT contort the
+    // boundary logic to let this through.
+    [
+      "value recurs standalone even though it reads as a benign amount",
+      "Routing number: 100000000. Budget is 100000000 yen approved.",
+    ],
+  ];
+
+  for (const [label, input] of LEAKS) {
+    it(`refuses: ${label}`, async () => {
+      await expect(redactForEgress(input, new Vault())).rejects.toThrow(
+        ResidualValueError,
+      );
+    });
+  }
+});
+
+/**
+ * The false positives the boundary guard fixes: the vaulted digits appear ONLY
+ * inside a longer alphanumeric token (a benign order id / tracking number), so
+ * nothing sensitive stands alone on the wire. These must SEND, with the benign
+ * token preserved verbatim and the labelled value replaced by its placeholder.
+ */
+describe("residual guard — benign superstrings now SEND", () => {
+  it("sends when the digits are only a substring of a benign order id", async () => {
+    const input = "Account number: 123456789. Order 0123456789A confirmed.";
+    const pending = await redactForEgress(input, new Vault());
+    // The labelled account is vaulted...
+    expect(pending.redactedText).toContain("[ACCOUNT_1]");
+    // ...while the benign order id (which merely contains the digits) is intact.
+    expect(pending.redactedText).toContain("0123456789A");
+    // And the payload is genuinely sendable end-to-end.
+    const wire = approve(pending, () => {}).redactedText;
+    expect(wire).toContain("0123456789A");
+  });
+
+  it("sends when the account number is only a prefix of a tracking number", async () => {
+    const input = "Account number: 100200300. Tracking: 1002003009 shipped.";
+    const pending = await redactForEgress(input, new Vault());
+    expect(pending.redactedText).toContain("[ACCOUNT_1]");
+    expect(pending.redactedText).toContain("1002003009");
+    const wire = approve(pending, () => {}).redactedText;
+    expect(wire).toContain("1002003009");
+  });
+});

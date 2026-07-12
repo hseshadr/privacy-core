@@ -1,7 +1,7 @@
 import { detect } from "./detect/detector.js";
 import { mintPendingRedaction, type PendingRedaction } from "./egress.js";
-import { PlaceholderCollisionError } from "./errors.js";
-import type { AuditSink } from "./types.js";
+import { PlaceholderCollisionError, ResidualValueError } from "./errors.js";
+import type { AuditSink, Span } from "./types.js";
 import type { Vault } from "./vault.js";
 
 /**
@@ -9,6 +9,50 @@ import type { Vault } from "./vault.js";
  * it would be indistinguishable from vault tokens after redaction.
  */
 const PLACEHOLDER_SHAPE = /\[[A-Z]+_\d+\]/;
+
+/** Escape a raw value so it can be embedded literally inside a RegExp. */
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Match the value only as a STANDALONE token: no alphanumeric character may sit
+ * immediately before or after it. This is the \b-style guard for values whose
+ * edges are digits/letters (every label-gated ACCOUNT/ROUTING value is), and it
+ * is what separates a real leak (`... 021000021` standalone) from a benign
+ * superstring (`0123456789A`, `1002003009`) that merely contains the digits.
+ * For a value whose own edge is a non-word char the adjacent guard is simply
+ * inert there, degrading to a raw-presence check — safe, since such a value
+ * cannot be a substring of a longer alphanumeric token anyway.
+ */
+function survivesAsToken(out: string, value: string): boolean {
+  const standalone = new RegExp(
+    `(?<![A-Za-z0-9])${escapeForRegExp(value)}(?![A-Za-z0-9])`,
+  );
+  return standalone.test(out);
+}
+
+/**
+ * Fail closed if any detected value survived as a standalone token in the
+ * redacted output. The span-by-span rebuild only removes the ranges the
+ * detector matched, so a value that recurs where the ruleset did not
+ * independently match it (a duplicate copy of a label-gated ACCOUNT/ROUTING
+ * number) can slip through. A detected value is one the tool already vaulted as
+ * PII; emitting a verbatim standalone copy would leak it, so refuse rather than
+ * send. A value that survives only as a substring of a longer alphanumeric
+ * token (a benign order id / tracking number) is NOT a leak and does not refuse.
+ */
+function assertNoResidual(out: string, spans: readonly Span[]): void {
+  for (const s of spans) {
+    if (survivesAsToken(out, s.value)) {
+      throw new ResidualValueError(
+        `a detected ${s.type} value survived redaction and would cross the wire ` +
+          "verbatim (a duplicate the ruleset matched only once) — refusing to " +
+          "emit a payload that leaks a value already known to be PII",
+      );
+    }
+  }
+}
 
 /**
  * THE ONLY legitimate constructor of a PendingRedaction.
@@ -44,6 +88,8 @@ export async function redactForEgress(
     cursor = s.end;
   }
   out += raw.slice(cursor);
+  // Fail closed BEFORE auditing/minting: a redact that leaks is not a redact.
+  assertNoResidual(out, spans);
   audit?.({ kind: "redact", at: Date.now(), placeholders });
   return mintPendingRedaction(out, vault.ref, placeholders);
 }
