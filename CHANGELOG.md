@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+These changes ship as the next release, **0.2.0** — a breaking one (the egress
+API changed, see below). The tree's `package.json` is `0.2.0-dev` until that
+release is cut and tagged; the released `v0.1.0` tag maps to the [0.1.0] section
+below.
+
 ### Changed — BREAKING
 
 - **Approval is now an explicit step, never a side effect.** `redactForEgress`

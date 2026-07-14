@@ -1,6 +1,6 @@
 {
   "name": "@edgeproc/privacy-core",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "private": true,
   "type": "module",
   "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
@@ -41,9 +41,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.7",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.7"
   }
 }
