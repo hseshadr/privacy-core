@@ -12,11 +12,12 @@ LLM; the model's reply is **rehydrated locally** so you see real values again.
   leaves the browser, swapping each detected value for a typed placeholder
   (`[CARD_1]`, `[NAME_2]`, `[AMOUNT_1]`), then restores the real values locally
   when the model replies. You see and approve the exact text that will be sent.
-- **Why it works** — the load-bearing trick is a **type-enforced Egress Guard**:
-  provider adapters accept *only* a branded `RedactedPayload`, whose sole
-  constructor is the redaction pipeline. A raw `string` is not assignable, so
-  **handing raw text to a provider is a compile error** — not a discipline you
-  have to remember. `pnpm build` (tsc) proves it on every build.
+- **Why it works** — you can't send raw text by accident. The only way to hand
+  text to the model runs through the redaction step, and you see and approve the
+  exact placeholders-only version before anything is sent. If code tries to skip
+  that and send raw text, it won't even build — the safety is baked into the code
+  itself, not a rule you have to remember. (The mechanism is in
+  [Under the hood](#under-the-hood-for-developers).)
 - **Why it exists** — people paste bank statements, medical notes, and contracts
   into chatbots every day, and all of it leaves the device in the clear. This
   makes the boundary *visible and approvable* instead of invisible.
@@ -103,6 +104,21 @@ point — over-claiming privacy is worse than claiming none.
   coarsening) that would start to address this are explicitly **deferred**.
 
 If those two limits are unacceptable for a use case, this is the wrong tool.
+
+---
+
+## Under the hood (for developers)
+
+The "it won't even build" guarantee is a **type-enforced Egress Guard**, not a
+convention. Provider adapters accept *only* a branded `RedactedPayload`, whose
+sole constructor is the redaction pipeline (`redactForEgress` → `approve`). A
+raw `string` is not assignable to that type, so **handing raw text to a provider
+is a compile error** — not a discipline you have to remember. `pnpm build` (tsc)
+proves it on every build.
+
+The same guarantee is re-checked at runtime so a cast can't defeat it: every
+approved payload is registered by identity, and `assertApproved()` rejects a
+hand-forged or spread-cloned look-alike before any network call is made.
 
 ## Architecture — maps 1:1 to `src/`
 
