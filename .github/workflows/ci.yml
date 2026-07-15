@@ -13,14 +13,14 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install pnpm
         # Version comes from package.json "packageManager" — one pin, no drift.
         uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -44,7 +44,7 @@ jobs:
       # events; without this it 403s ("Resource not accessible by integration").
       pull-requests: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history — gitleaks scans every commit, not just HEAD.
           fetch-depth: 0
