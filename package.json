@@ -1,7 +1,9 @@
 {
   "name": "@edgeproc/privacy-core",
-  "version": "0.2.0-dev",
-  "private": true,
+  "version": "0.2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
   "license": "MIT",
@@ -28,7 +30,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@edgeproc/avow": "link:../assay/ts"
+    "@edgeproc/avow": "^0.1.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

@@ -2,6 +2,9 @@ packages:
   - "."
   - "examples/*"
 
+minimumReleaseAgeExclude:
+  - '@edgeproc/avow@0.1.0'
+
 onlyBuiltDependencies:
   - "@biomejs/biome"
   - esbuild
