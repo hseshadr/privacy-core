@@ -17,6 +17,10 @@
 
 import { contentHash, type SignedReceipt, signPayload } from "@edgeproc/avow";
 
+// Re-exported so receipt verifiers can recompute `args_digest` with the SAME
+// canonical hash the sealer used, without importing @edgeproc/avow directly.
+export { contentHash } from "@edgeproc/avow";
+
 /** Whether the guard let the redacted text leave the device, or refused it. */
 export type EgressDecision = "allow" | "deny";
 
@@ -61,6 +65,22 @@ export async function buildEgressSubject(
     decision: input.decision,
     detector_version: input.detectorVersion ?? DETECTOR_VERSION,
   };
+}
+
+/**
+ * How a guarded provider seals its decisions. Given to
+ * {@link file://./egress.ts guardedProvider}, every allow AND every fail-closed
+ * deny at that chokepoint is signed and handed to `onReceipt` — the guard
+ * cannot act silently once governed.
+ */
+export interface EgressGovernance {
+  /** Provider name recorded in each receipt (e.g. "openrouter"). */
+  readonly provider: string;
+  /** Ed25519 seed (hex) that signs the receipts. */
+  readonly seedHex: string;
+  /** Receives every sealed decision receipt. */
+  readonly onReceipt: (receipt: SignedReceipt<EgressSubject>) => void;
+  readonly detectorVersion?: string;
 }
 
 /** Seal an egress decision into a signed, pinned-key-verifiable receipt. */

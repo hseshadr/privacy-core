@@ -26,8 +26,10 @@ export {
 // Signed egress receipts (the Writ-style effect face).
 export {
   buildEgressSubject,
+  contentHash,
   DETECTOR_VERSION,
   type EgressDecision,
+  type EgressGovernance,
   type EgressSubject,
   type EgressSubjectInput,
   sealEgressReceipt,

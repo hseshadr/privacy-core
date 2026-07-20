@@ -1,3 +1,8 @@
+import {
+  type EgressDecision,
+  type EgressGovernance,
+  sealEgressReceipt,
+} from "./egressReceipt.js";
 import { ForgedPayloadError, UnapprovedPayloadError } from "./errors.js";
 import type { AuditSink, VaultRef } from "./types.js";
 
@@ -125,14 +130,50 @@ export function approve(
  * brand stops a raw string at compile time, but a hand-rolled or third-party
  * provider could still forget to call {@link assertApproved} at runtime — this
  * wrapper makes that impossible for any provider obtained through it.
+ *
+ * With `governance`, the chokepoint additionally seals EVERY decision — each
+ * allow and each fail-closed deny — as a signed Avow effect receipt (see
+ * {@link file://./egressReceipt.ts}). The deny receipt digests the redacted
+ * text that was ATTEMPTED, and only its hash; nothing reaches the inner
+ * provider on a deny either way.
  */
-export function guardedProvider(inner: LlmProvider): LlmProvider {
+export function guardedProvider(
+  inner: LlmProvider,
+  governance?: EgressGovernance,
+): LlmProvider {
   return {
     async complete(payload) {
-      assertApproved(payload);
+      try {
+        assertApproved(payload);
+      } catch (denied) {
+        await sealDecision(governance, payload.redactedText, "deny");
+        throw denied;
+      }
+      await sealDecision(governance, payload.redactedText, "allow");
       return inner.complete(payload);
     },
   };
+}
+
+/** Seal one guard decision and hand it to the governance sink, if governed. */
+async function sealDecision(
+  governance: EgressGovernance | undefined,
+  redactedText: string,
+  decision: EgressDecision,
+): Promise<void> {
+  if (!governance) return;
+  const { provider, seedHex, onReceipt, detectorVersion } = governance;
+  onReceipt(
+    await sealEgressReceipt(
+      {
+        provider,
+        redactedText,
+        decision,
+        ...(detectorVersion === undefined ? {} : { detectorVersion }),
+      },
+      seedHex,
+    ),
+  );
 }
 
 /**
