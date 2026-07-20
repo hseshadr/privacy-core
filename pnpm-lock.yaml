@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@edgeproc/avow':
+        specifier: link:../assay/ts
+        version: link:../assay/ts
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.16

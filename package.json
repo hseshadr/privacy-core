@@ -27,6 +27,9 @@
     }
   },
   "sideEffects": false,
+  "dependencies": {
+    "@edgeproc/avow": "link:../assay/ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/demo/tsconfig.json --noEmit",
