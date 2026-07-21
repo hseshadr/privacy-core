@@ -133,7 +133,7 @@ of exactly what will be sent:
 pnpm install && pnpm demo   # then open http://localhost:5173
 ```
 
-![Paste a statement, preview exactly what leaves, send only labels, read a rehydrated answer.](docs/wow.png)
+![Paste a statement, preview exactly what leaves, send only labels, read a rehydrated answer.](docs/demo.png)
 
 Open your browser's network tab and watch the request. Only labels go out.
 Nothing is sent until you click **Approve & send** — you approve the exact

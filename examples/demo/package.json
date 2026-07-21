@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Runnable Vite demo that consumes @edgeproc/privacy-core's public API — the redact → preview → send → rehydrate wow loop.",
+  "description": "Runnable Vite demo that consumes @edgeproc/privacy-core's public API — redact, preview, send, then rehydrate locally.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
