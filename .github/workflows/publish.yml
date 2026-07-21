@@ -24,8 +24,9 @@
 # gated ref and ships. install-args mirrors ci: --frozen-lockfile plus allow-all-builds so
 # the Playwright dependency's postinstall is permitted during the pnpm install.
 #
-# NOTE: hseshadr/ci is referenced at @ci-v2, which is not cut yet (pending). The reusable
-# OIDC workflows live on the ci repo's feat/oidc-publish branch until that tag is created.
+# NOTE: hseshadr/ci is pinned to a full commit SHA, not the moving `ci-v2` tag — a tag can be
+# repointed at new code, a SHA cannot. The trailing comment records which release that SHA is;
+# Dependabot's `github-actions` ecosystem bumps both the pin and the comment on a new release.
 name: Publish (npm, OIDC)
 on:
   push:
@@ -39,7 +40,7 @@ jobs:
     permissions:
       id-token: write # OIDC — npm verifies this against the registered trusted publisher.
       contents: read
-    uses: hseshadr/ci/.github/workflows/ts-publish.yml@ci-v2
+    uses: hseshadr/ci/.github/workflows/ts-publish.yml@36bf999acd0617135497b62605e19bed29ee1b94 # ci-v2.0.0
     with:
       working-directory: "."
       install-args: "--frozen-lockfile --config.dangerously-allow-all-builds=true"
