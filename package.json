@@ -8,6 +8,10 @@
   "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
   "license": "MIT",
   "author": "Harish Seshadri",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hseshadr/privacy-core.git"
+  },
   "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=22.13"
