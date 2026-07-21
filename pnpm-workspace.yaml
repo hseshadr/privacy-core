@@ -2,8 +2,15 @@ packages:
   - "."
   - "examples/*"
 
-minimumReleaseAgeExclude:
-  - '@edgeproc/avow@0.1.0'
+# Supply-chain cooldown: refuse to install any version published less than 24h
+# ago, the window in which a compromised release is usually caught and pulled.
+# Setting this key EXPLICITLY also switches pnpm out of its default non-strict
+# mode, so a resolution-path install now HARD-FAILS instead of silently
+# appending the tripped package to a `minimumReleaseAgeExclude:` list and
+# exiting 0. Never add that exclude key, and never set
+# `minimumReleaseAgeStrict: false` — the cooldown firing is the control
+# working. Wait the release window out. See test/supply-chain-exemptions.test.ts
+minimumReleaseAge: 1440
 
 onlyBuiltDependencies:
   - "@biomejs/biome"
