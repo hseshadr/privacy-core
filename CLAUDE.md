@@ -4,11 +4,14 @@ Guidance for Claude Code when working in this repository.
 
 ## Status
 
-Portfolio rank, tier, current state, and the next gating move live in **one place**:
-the Portfolio Status table in `~/dev/project-ideas/oss/README.md`. Never restate
-status here. The design spec is `~/dev/project-ideas/oss/edgeproc-privacy-core.md`;
-the house standard this repo builds against is
-`~/dev/project-ideas/oss/ENGINEERING-STANDARDS.md`.
+Portfolio rank, tier, current state, and the next gating move are tracked in **one
+place** — a private portfolio index — so never restate status claims in this file.
+The (private) design spec defines privacy-core as a browser-side privacy boundary for
+LLM calls: raw text stays on-device, only policy-approved redacted text egresses, and
+replies are rehydrated locally from an in-memory vault. The (private) house
+engineering standard sets the bar this repo builds against — toolchain, gate
+composition, CI shape, release discipline, and the WASM/edge-compute rules cited
+below as §8.
 
 ## Stack
 
@@ -22,7 +25,7 @@ dependencies — everything in `devDependencies` is toolchain.
 ```
 src/            library source — see docs/ARCHITECTURE.md for the 1:1 module map
   index.ts      public API barrel (production surface, nothing else)
-  egress.ts     the moat: branded RedactedPayload + LlmProvider + unsafeBypass
+  egress.ts     the differentiated layer: branded RedactedPayload + LlmProvider + unsafeBypass
   detect/       deterministic detection spine (patterns + checksums + dictionaries)
   providers/    NoLLMProvider (offline echo), OpenRouterProvider, makeProvider
   testing.ts    fixtures — exported ONLY via the ./testing subpath
@@ -34,7 +37,7 @@ docs/           ARCHITECTURE.md, QUICKSTART.md, diagrams/ (d2 + rendered svg)
 
 ## Invariants (don't break without updating the spec)
 
-- **Type-enforced Egress Guard is the moat.** Providers accept only the branded
+- **The type-enforced Egress Guard is the differentiated layer.** Providers accept only the branded
   `RedactedPayload`; `redactForEgress` is its only public constructor. Handing raw
   text to a provider is a *compile error*. `mintPendingRedaction` never leaves the
   internal module; fixtures never leave `./testing`.
@@ -99,5 +102,5 @@ Each rule carries the scar it exists to prevent:
 **§8: not applicable yet.** privacy-core ships no browser WASM runtime today — the
 detection spine is pure TypeScript. §8 becomes applicable (patterns **b** — vendored
 WASM runtimes + parity-tested TS, and **c** — sqlite-wasm/OPFS storage) when
-in-browser NER models land (the deferred contextual-NER roadmap item). Adopt
-aml-filter's ORT-web embedder hardening config verbatim at that point.
+in-browser NER models land (the deferred contextual-NER roadmap item). Adopt the
+ORT-web embedder hardening config already proven in a sibling app at that point.
