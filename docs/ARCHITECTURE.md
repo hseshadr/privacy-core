@@ -23,7 +23,7 @@ model's reply is rehydrated locally, so real values never cross the wire.
    pipeline-minted `PendingRedaction` into the sendable **`RedactedPayload`**. The
    audit sink is **required**, so no approval is silent — and even a zero-detection
    result must pass through here; nothing is sendable by default.
-4. **The Egress Guard** (`src/egress.ts`) is the moat: `LlmProvider.complete()` accepts
+4. **The Egress Guard** (`src/egress.ts`) is the enforcement point: `LlmProvider.complete()` accepts
    only `RedactedPayload`. A raw `string` is not assignable, so leaking raw text to a
    provider fails at `tsc` time, not in code review. `assertApproved` re-checks the
    capability at runtime; the one escape hatch, `unsafeBypass`, must emit an `AuditEntry`.
@@ -40,7 +40,9 @@ model's reply is rehydrated locally, so real values never cross the wire.
 |---|---|
 | `src/index.ts` | Public API barrel — the production surface, nothing else |
 | `src/types.ts` | Shared domain types (`EntityType`, `Span`, `AuditEntry`, …) |
-| `src/egress.ts` | The moat: branded `RedactedPayload`, `LlmProvider`, `unsafeBypass` |
+| `src/egress.ts` | The enforcement point: branded `RedactedPayload`, `LlmProvider`, `unsafeBypass` |
+| `src/egressReceipt.ts` | Signs each allow/deny decision into a receipt (hash of the text only) |
+| `src/errors.ts` | Typed fail-closed errors |
 | `src/redact.ts` | `redactForEgress` — the only legitimate payload constructor |
 | `src/rehydrate.ts` | Local restore of real values after the reply |
 | `src/vault.ts` | `Vault` — reversible token↔value map (in-memory, v0) |

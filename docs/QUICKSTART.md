@@ -1,41 +1,48 @@
 # Quickstart
 
-The canonical runnable path lives in the [README Quickstart](../README.md#quickstart--one-command-see-the-proof) —
-this page is the same loop, condensed.
+Two ways in. If you just want to see what the library does, start with the
+[README](../README.md) — it has a copy-pasteable Node script and its real
+output. This page is for running the demo app and the repo's checks.
 
-## Run the demo (no API key needed)
+## Run the browser demo (no API key needed)
 
 ```bash
 # Prereqs: Node >= 22.13, pnpm (pinned via packageManager). From the repo root:
 pnpm install && pnpm demo
 ```
 
-Open <http://localhost:5173>. A synthetic bank statement is pre-loaded: you'll see the
-raw text, the exact redacted wire payload, and — after **Send** — the locally
-rehydrated answer. With no key set, the offline echo provider (`NoLLMProvider`) is
-used, so the whole loop runs cold.
+Open <http://localhost:5173>. A synthetic bank statement is pre-loaded. You see
+the raw text, the exact text that will be sent (every private value replaced by a
+label like `[CARD_1]`), and — after you click **Approve & send** — the answer with
+your real values put back locally. With no key set, a built-in offline stand-in
+model (`NoLLMProvider`) is used, so the whole loop runs with nothing on the
+network.
 
-To call a real model, copy `.env.example` → `examples/demo/.env`, set
-`OPENROUTER_API_KEY`, and add `VITE_USE_OPENROUTER=1`. The demo then routes through
-a same-origin dev proxy that injects the key server-side — it never reaches the
-browser. Either way, **only placeholders cross the wire** — verify it yourself in
-the browser's network tab.
+Open the browser's network tab while you click. Only labels go out.
 
-## Prove it headlessly
+## Call a real model
+
+Copy `.env.example` → `examples/demo/.env`, set `OPENROUTER_API_KEY`, and add
+`VITE_USE_OPENROUTER=1`. The demo then routes through a same-origin dev proxy
+that injects the key server-side — it never reaches the browser bundle. Either
+way, only labels cross the wire.
+
+## Prove it without watching
 
 ```bash
 pnpm exec playwright install --with-deps chromium   # first time only
 pnpm test:e2e
 ```
 
-Drives the demo in real Chromium, intercepts the request, and asserts only
-placeholders crossed (the screenshot lands in the gitignored `test-results/`).
+Drives the demo in real Chromium, intercepts the outbound request, and fails if
+any real value appears in it. The screenshot lands in the gitignored
+`test-results/`.
 
-## Run the full quality gate
+## Run the full check suite
 
 ```bash
 pnpm gate
 ```
 
-Biome lint/format → typecheck → Vitest (coverage thresholds) → Playwright e2e →
-build. CI runs this exact command.
+Biome lint/format → typecheck → Vitest (with coverage thresholds) → Playwright
+e2e → build. CI runs this exact command.

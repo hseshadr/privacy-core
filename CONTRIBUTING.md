@@ -35,7 +35,7 @@ regression test.
 
 ## Invariants (don't break these)
 
-- **The Egress Guard is the moat.** `redactForEgress` stays the only public
+- **The Egress Guard is load-bearing.** `redactForEgress` stays the only public
   constructor of `RedactedPayload`; providers accept only the brand. Never export
   `mintPendingRedaction` from the main barrel.
 - **Test fixtures live behind `./testing`** — never in the production barrel
