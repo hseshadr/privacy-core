@@ -20,6 +20,16 @@ network.
 
 Open the browser's network tab while you click. Only labels go out.
 
+**Stop the demo when you are done** (`Ctrl-C` in that terminal). It holds port
+5173, and the e2e suite reuses an already-running server on that port instead of
+starting its own. A demo server left over from this section was started WITHOUT
+the settings the e2e run needs, so the suite would silently adopt the wrong
+server and fail. If a run fails unexpectedly, check the port first:
+
+```bash
+lsof -ti tcp:5173   # any output means a server is still up — stop it, then re-run
+```
+
 ## Call a real model
 
 Copy `.env.example` → `examples/demo/.env`, set `OPENROUTER_API_KEY`, and add

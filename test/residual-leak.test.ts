@@ -30,14 +30,21 @@ describe("residual-value fail-closed guard", () => {
   });
 
   it("the known-sensitive value never reaches an approved payload's wire text", async () => {
-    let wireText = "";
-    try {
+    // Collect what was actually minted rather than defaulting to "". An empty
+    // string satisfies the "does not contain the value" assertion no matter what
+    // happened, so a swallowed error — or a deleted redactor — would pass. An
+    // empty ARRAY can only mean no sendable payload was ever produced.
+    const minted: string[] = [];
+
+    // Assert the REFUSAL itself: the fail-closed path is the behaviour under
+    // test, not an incidental route to an empty variable.
+    await expect(async () => {
       const pending = await redactForEgress(LEAKY, new Vault());
-      wireText = approve(pending, () => {}).redactedText;
-    } catch {
-      /* fail-closed path — nothing sendable was minted */
-    }
-    expect(wireText).not.toContain("021000021");
+      minted.push(approve(pending, () => {}).redactedText);
+    }).rejects.toThrow(ResidualValueError);
+
+    // Nothing sendable exists, so nothing can carry the value onto the wire.
+    expect(minted).toEqual([]);
   });
 
   it("does NOT refuse a statement where every detected value appears once", async () => {

@@ -9,7 +9,8 @@ import type { RedactedResponse } from "../types.js";
  * Offline fallback provider — runs with NO API key. It does NOT touch the
  * network; it echoes a plausible analyst reply that references the same
  * placeholders, so the rehydrate step has something to restore. This is what
- * makes the demo runnable cold, with the wow-loop fully intact.
+ * makes the demo runnable cold, with the full redact → send → rehydrate loop
+ * intact.
  */
 export class NoLLMProvider implements LlmProvider {
   async complete(payload: RedactedPayload): Promise<RedactedResponse> {

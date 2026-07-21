@@ -323,21 +323,36 @@ Everything `src/index.ts` exports, and nothing more:
 | Export | Kind | Role |
 |---|---|---|
 | `detect` | fn | deterministic PII span detection |
-| `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
 | `approve` | fn | explicit review step → mints the sendable payload (audit sink required) |
-| `rehydrate` | fn | restore real values locally from placeholders |
-| `Vault` | class | reversible token↔value map |
-| `RedactedPayload` | type | the branded egress type |
-| `LlmProvider` | interface | provider contract — accepts only `RedactedPayload` |
 | `assertApproved` | fn | runtime half of the guard — rejects unminted payloads |
 | `guardedProvider` | fn | wrap a provider so the runtime guard runs at one chokepoint — plus receipts if given a governance context |
-| `NoLLMProvider` | class | offline echo provider |
-| `OpenRouterProvider` | class | OpenAI-compatible provider |
-| `makeProvider` | fn | config-driven provider selector |
-| `sealEgressReceipt` | fn | sign one egress decision into a receipt |
+| `LlmProvider` | interface | provider contract — accepts only `RedactedPayload` |
+| `PendingRedaction` | type | a redaction proposal awaiting explicit review — not yet sendable |
+| `RedactedPayload` | type | the branded egress type |
+| `unsafeBypass` | fn | the explicit, audited escape hatch |
 | `buildEgressSubject` | fn | build the signed subject (hash of redacted text, decision, provider) |
 | `contentHash` | fn | the canonical hash a verifier recomputes `args_digest` with |
-| `unsafeBypass` | fn | the explicit, audited escape hatch |
+| `DETECTOR_VERSION` | const | version tag for the detector ruleset, recorded in each receipt |
+| `EgressDecision` | type | the guard's verdict on one egress attempt — allow or deny |
+| `EgressGovernance` | interface | how a guarded provider seals its decisions (signer seed + receipt sink) |
+| `EgressSubject` | type | the signed, hash-only record of one egress decision |
+| `EgressSubjectInput` | interface | what the caller supplies to build an `EgressSubject` |
+| `sealEgressReceipt` | fn | sign one egress decision into a receipt |
+| `makeProvider` | fn | config-driven provider selector |
+| `ProviderConfig` | interface | host-supplied config (API key, model, endpoint) for `makeProvider` |
+| `SelectedProvider` | interface | the provider `makeProvider` picked, plus a label for the UI |
+| `NoLLMProvider` | class | offline echo provider |
+| `OpenRouterConfig` | interface | config for `OpenRouterProvider` (API key, model, endpoint) |
+| `OpenRouterProvider` | class | OpenAI-compatible provider |
+| `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
+| `rehydrate` | fn | restore real values locally from placeholders |
+| `AuditEntry` | interface | one append-only audit record (redact / approve / unsafe-bypass) |
+| `AuditSink` | type | the audit callback signature callers supply to `approve`/`unsafeBypass` |
+| `EntityType` | type | the PII categories the detector recognizes (CARD, SSN, EMAIL, ...) |
+| `RedactedResponse` | interface | a provider's reply, still in placeholder form until rehydrated |
+| `Span` | interface | one detected PII span (type, value, start, end) |
+| `VaultRef` | interface | opaque handle to a vault's token → value mappings |
+| `Vault` | class | reversible token↔value map |
 
 Typed fail-closed errors are exported too: `ForgedPayloadError`,
 `PlaceholderCollisionError`, `ResidualValueError`, `UnapprovedPayloadError`,

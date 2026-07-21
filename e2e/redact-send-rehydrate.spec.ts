@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * The wow loop, automated in a real (headless) browser, driving the demo app
- * (examples/demo) which consumes ONLY the library's public API.
+ * The redact → send → rehydrate loop, automated in a real (headless) browser,
+ * driving the demo app (examples/demo) which consumes ONLY the library's
+ * public API.
  *
  * We drive the OpenRouter provider path (VITE_USE_OPENROUTER=1, which routes
  * through the same-origin dev proxy) and intercept the request with `page.route`
@@ -92,6 +93,9 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
   await expect(answer).toContainText("$1,482.10");
 
   // Write to the gitignored artifacts dir so test runs never churn the tree.
-  // The committed README hero (docs/wow.png) is a stable, decoupled snapshot.
-  await page.screenshot({ path: "test-results/wow.png", fullPage: true });
+  // The committed README hero (docs/demo.png) is a stable, decoupled snapshot.
+  await page.screenshot({
+    path: "test-results/redact-send-rehydrate.png",
+    fullPage: true,
+  });
 });

@@ -41,7 +41,7 @@ export const MERCHANTS: readonly string[] = [
 /**
  * A tiny known-names dictionary. Real name coverage is the job of the deferred
  * NER adapter (see Roadmap); this keeps the deterministic spine self-contained
- * and the wow-demo runnable with zero download.
+ * and the demo runnable with zero download.
  */
 export const NAMES: readonly string[] = [
   "Ada Lovelace",

@@ -8,11 +8,17 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["src/testing.ts"],
-      // ENGINEERING-STANDARDS §2 TypeScript floor (edge-reco's numbers).
+      // Pinned to what this suite ACHIEVES, not to the portfolio floor. A floor
+      // set below the achieved number silently absorbs a regression: coverage
+      // could fall from 100% to 90% and the gate would stay green. At the real
+      // value, any newly uncovered line is a failure rather than slack. And
+      // `statements` is listed explicitly — omitting it left one of the four
+      // metrics completely ungated.
       thresholds: {
-        lines: 90,
-        functions: 90,
-        branches: 85,
+        statements: 100,
+        lines: 100,
+        functions: 100,
+        branches: 100,
       },
     },
   },
