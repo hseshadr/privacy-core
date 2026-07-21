@@ -7,14 +7,16 @@
 #
 # Two npm truths this caller encodes (see ts-publish.yml):
 #   1. The FIRST publish of the name CANNOT use OIDC — npm has no "pending publisher", so
-#      the package must already exist to attach one. Do ONE token/OTP `npm publish` by
-#      hand, THEN register the trusted publisher in the package settings ({owner,
-#      privacy-core, publish.yml}). Every tag push after that runs through here, token-free.
+#      the package must already exist to attach one. That first token/OTP publish is DONE:
+#      `@edgeproc/privacy-core` 0.2.0 is live on npm. What remains is registering the
+#      trusted publisher in the package settings ({owner, privacy-core, publish.yml});
+#      every tag push after that runs through here, token-free. Because 0.2.0 is already
+#      taken, the next release tag must carry a HIGHER version — re-tagging v0.2.0 would
+#      just 403 (npm forbids overwriting a published version).
 #   2. `provenance` stays FALSE until the repo is PUBLIC — `--provenance` writes a public
 #      transparency-log entry and fails on a private repo. Flip it true in the same wave
-#      privacy-core goes public. Also add a `repository.url` to package.json (currently
-#      absent) that exactly matches the GitHub repo before the first OIDC release, or the
-#      publish fails with ENEEDAUTH.
+#      privacy-core goes public. `repository.url` is now present in package.json and matches
+#      the GitHub repo, which npm OIDC requires (absent or mismatched, the publish ENEEDAUTHs).
 #
 # run-gate is FALSE here: the full gate (biome -> tsc -> vitest -> playwright e2e -> build)
 # already ran on the merge to main via ci.yml, and its browser e2e step needs a Playwright
