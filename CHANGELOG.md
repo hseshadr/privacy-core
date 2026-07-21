@@ -5,12 +5,12 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-07-20
 
-These changes ship as the next release, **0.2.0** — a breaking one (the egress
-API changed, see below). The tree's `package.json` is `0.2.0-dev` until that
-release is cut and tagged; the released `v0.1.0` tag maps to the [0.1.0] section
-below.
+A breaking release (the egress API changed, see below). Also drops the local
+`link:` dependency on `@edgeproc/avow` in favour of the published
+`@edgeproc/avow@^0.1.0` from npm, and publishes this package publicly as
+`@edgeproc/privacy-core`.
 
 ### Changed — BREAKING
 
