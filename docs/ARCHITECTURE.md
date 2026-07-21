@@ -41,7 +41,7 @@ model's reply is rehydrated locally, so real values never cross the wire.
 | `src/index.ts` | Public API barrel — the production surface, nothing else |
 | `src/types.ts` | Shared domain types (`EntityType`, `Span`, `AuditEntry`, …) |
 | `src/egress.ts` | The enforcement point: branded `RedactedPayload`, `LlmProvider`, `unsafeBypass` |
-| `src/egressReceipt.ts` | Signs each allow/deny decision into a receipt (hash of the text only) |
+| `src/egressReceipt.ts` | Signs allow/deny decisions into receipts — opt-in, when `guardedProvider` is given a governance context (hash of the text only) |
 | `src/errors.ts` | Typed fail-closed errors |
 | `src/redact.ts` | `redactForEgress` — the only legitimate payload constructor |
 | `src/rehydrate.ts` | Local restore of real values after the reply |

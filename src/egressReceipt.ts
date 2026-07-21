@@ -3,11 +3,18 @@
  *
  * The Egress Guard already gates whether redacted text may leave the device
  * (see {@link file://./egress.ts}). This module makes that decision *provable*:
- * every allow or deny is expressed as a Writ-style governed effect — an
+ * an allow or deny is expressed as a Writ-style governed effect — an
  * `EgressSubject` — and signed into a tamper-evident receipt via the shared
  * `@edgeproc/avow` envelope. A holder of the signer's public key can later
  * verify exactly which egress decisions were taken, without ever seeing the
  * content.
+ *
+ * SCOPE — sealing is opt-in: receipts are produced only for a
+ * {@link file://./egress.ts guardedProvider} that was given an
+ * {@link EgressGovernance} context. A caller who omits it still gets the full
+ * redaction and the same fail-closed guard, just no receipt. The guarantee
+ * below therefore reads: *once governed*, every allow and every deny at that
+ * chokepoint is sealed.
  *
  * INVARIANT — no plaintext in a receipt: the subject stores only
  * `args_digest = sha256(canonical({ redactedText }))`, never the text itself,

@@ -178,10 +178,16 @@ tool. Say so out loud rather than working around it.
 
 ## Receipts: a record of what was allowed and what was blocked
 
-Every egress decision can be signed into a **receipt** — a small record saying
+Receipts are **opt-in**. Hand `guardedProvider` a governance context — a
+provider name, your signing key, and an `onReceipt` callback — and from then on
+every decision it makes is signed into a **receipt**: a small record saying
 "text with this fingerprint was allowed (or refused) to go to this provider",
 signed with your key. Refusals are recorded too, so a blocked send can't just
 vanish. A receipt never contains the text itself, only a SHA-256 hash of it.
+
+Omit that argument and you get exactly the same redaction and the same
+fail-closed guard — just no receipt. Turn receipts on when you need to prove
+afterwards what left the device; leave them off when you don't.
 
 Signing and verifying live in `@edgeproc/avow`, so add it alongside:
 `npm install @edgeproc/avow`.
@@ -287,7 +293,7 @@ src/
 ├── index.ts            # public API barrel — the production surface, nothing else
 ├── types.ts            # shared domain types (EntityType, Span, AuditEntry, …)
 ├── egress.ts           # the boundary: branded RedactedPayload + LlmProvider + unsafeBypass
-├── egressReceipt.ts    # signs each allow/deny decision into a receipt (hash only)
+├── egressReceipt.ts    # signs allow/deny decisions into receipts when governed (hash only)
 ├── errors.ts           # typed fail-closed errors
 ├── redact.ts           # redactForEgress — the ONLY legitimate payload constructor
 ├── rehydrate.ts        # local restore of real values after the reply
@@ -324,7 +330,7 @@ Everything `src/index.ts` exports, and nothing more:
 | `RedactedPayload` | type | the branded egress type |
 | `LlmProvider` | interface | provider contract — accepts only `RedactedPayload` |
 | `assertApproved` | fn | runtime half of the guard — rejects unminted payloads |
-| `guardedProvider` | fn | wrap a provider so the runtime guard (and receipts) run at one chokepoint |
+| `guardedProvider` | fn | wrap a provider so the runtime guard runs at one chokepoint — plus receipts if given a governance context |
 | `NoLLMProvider` | class | offline echo provider |
 | `OpenRouterProvider` | class | OpenAI-compatible provider |
 | `makeProvider` | fn | config-driven provider selector |
