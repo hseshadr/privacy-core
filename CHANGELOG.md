@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Governed egress now records a signed denial even when a plain-JavaScript caller
+  supplies a malformed payload (`null`, a non-string text field, or a hostile
+  getter), preserving the fail-closed error and receipt invariant.
+- Redaction now rejects inputs over 512 KiB of UTF-8 before detector, vault, or
+  audit work, with an exported typed error and documented limit.
+
 ## [0.2.1] — 2026-07-21
 
 First release shipped through the token-free OIDC release rail: a `v*` tag push
