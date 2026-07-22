@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   approve,
+  InputTooLargeError,
+  MAX_REDACTION_INPUT_BYTES,
   PlaceholderCollisionError,
   redactForEgress,
   rehydrate,
@@ -9,6 +11,32 @@ import {
 } from "../src/index.js";
 
 describe("fail-closed reversibility", () => {
+  it("rejects input over the UTF-8 byte cap before vault or audit work", async () => {
+    const audit = vi.fn();
+    const raw = "x".repeat(MAX_REDACTION_INPUT_BYTES + 1);
+
+    await expect(redactForEgress(raw, new Vault(), audit)).rejects.toThrow(
+      InputTooLargeError,
+    );
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("accepts input exactly at the UTF-8 byte cap", async () => {
+    const pending = await redactForEgress(
+      "x".repeat(MAX_REDACTION_INPUT_BYTES),
+      new Vault(),
+    );
+    expect(pending.redactedText).toHaveLength(MAX_REDACTION_INPUT_BYTES);
+  });
+
+  it("counts UTF-8 bytes rather than JavaScript UTF-16 code units", async () => {
+    const raw = "😀".repeat(Math.floor(MAX_REDACTION_INPUT_BYTES / 2) + 1);
+
+    await expect(redactForEgress(raw, new Vault())).rejects.toThrow(
+      InputTooLargeError,
+    );
+  });
+
   it("rejects input that already contains placeholder-shaped text (restore would be ambiguous)", async () => {
     // A pre-existing literal "[CARD_1]" is indistinguishable from a vault
     // token after redaction — rehydrate would silently substitute the card

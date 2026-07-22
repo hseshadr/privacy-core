@@ -60,6 +60,10 @@ model's reply is rehydrated locally, so real values never cross the wire.
   regex/checksum/dictionary — same input, same spans, testable offline. The contextual
   NER tier that would widen recall is a deferred, off-by-default adapter (see the
   README roadmap).
+- **Bounded redaction.** `redactForEgress` rejects inputs over
+  `MAX_REDACTION_INPUT_BYTES` (512 KiB UTF-8) before detector or vault work, so
+  a hostile paste cannot turn repeated residual checks into an unbounded client
+  resource cost.
 - **A payload is earned, not forged.** The brand factory (`mintPendingRedaction`) is not
   exported from the barrel; test fixtures live behind `@edgeproc/privacy-core/testing`.
 - **The guarantee is tested at the wire.** The Playwright e2e intercepts the real

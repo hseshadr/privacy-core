@@ -37,6 +37,7 @@ export {
 // Typed fail-closed errors.
 export {
   ForgedPayloadError,
+  InputTooLargeError,
   PlaceholderCollisionError,
   ResidualValueError,
   UnapprovedPayloadError,
@@ -55,7 +56,10 @@ export {
   OpenRouterProvider,
 } from "./providers/openrouter.js";
 // The reversible loop.
-export { redactForEgress } from "./redact.js";
+export {
+  MAX_REDACTION_INPUT_BYTES,
+  redactForEgress,
+} from "./redact.js";
 export { rehydrate } from "./rehydrate.js";
 // Public domain types.
 export type {

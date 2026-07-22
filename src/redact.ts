@@ -1,6 +1,10 @@
 import { detect } from "./detect/detector.js";
 import { mintPendingRedaction, type PendingRedaction } from "./egress.js";
-import { PlaceholderCollisionError, ResidualValueError } from "./errors.js";
+import {
+  InputTooLargeError,
+  PlaceholderCollisionError,
+  ResidualValueError,
+} from "./errors.js";
 import type { AuditSink, Span } from "./types.js";
 import type { Vault } from "./vault.js";
 
@@ -9,6 +13,22 @@ import type { Vault } from "./vault.js";
  * it would be indistinguishable from vault tokens after redaction.
  */
 const PLACEHOLDER_SHAPE = /\[[A-Z]+_\d+\]/;
+
+/** Maximum input size keeps synchronous detection bounded on the browser thread. */
+export const MAX_REDACTION_INPUT_BYTES = 512 * 1024;
+const UTF8_ENCODER = new TextEncoder();
+const MAX_UTF8_BYTES_PER_CODE_UNIT = 3;
+
+function exceedsInputCap(raw: string): boolean {
+  if (raw.length * MAX_UTF8_BYTES_PER_CODE_UNIT <= MAX_REDACTION_INPUT_BYTES) {
+    return false;
+  }
+  const probe = UTF8_ENCODER.encodeInto(
+    raw,
+    new Uint8Array(MAX_REDACTION_INPUT_BYTES + 1),
+  );
+  return probe.read < raw.length || probe.written > MAX_REDACTION_INPUT_BYTES;
+}
 
 /** Escape a raw value so it can be embedded literally inside a RegExp. */
 function escapeForRegExp(value: string): string {
@@ -68,6 +88,9 @@ export async function redactForEgress(
   vault: Vault,
   audit?: AuditSink,
 ): Promise<PendingRedaction> {
+  if (exceedsInputCap(raw)) {
+    throw new InputTooLargeError(MAX_REDACTION_INPUT_BYTES);
+  }
   const collision = raw.match(PLACEHOLDER_SHAPE);
   if (collision) {
     throw new PlaceholderCollisionError(

@@ -4,6 +4,22 @@
  */
 
 /**
+ * Thrown by {@link redactForEgress} before detection when the input exceeds
+ * the bounded UTF-8 budget. Refusing before vault writes or audit callbacks
+ * keeps oversized hostile input from turning the detector into a client-side
+ * resource exhaustion path.
+ */
+export class InputTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super(`redaction input exceeds the ${maxBytes}-byte UTF-8 limit`);
+    this.name = "InputTooLargeError";
+    this.maxBytes = maxBytes;
+  }
+}
+
+/**
  * Thrown by {@link approve} when handed an object the redaction pipeline never
  * minted. A hand-built "pending" could smuggle unreviewed raw text past the
  * guard, so it is rejected outright.

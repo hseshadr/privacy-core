@@ -157,6 +157,12 @@ is worse than claiming none.
   guarantee; the tool's job is to make the text you're about to send visible and
   approvable, not to promise it caught everything.
 
+- **Redaction input is bounded.** `redactForEgress` accepts at most 512 KiB of
+  UTF-8 text (`MAX_REDACTION_INPUT_BYTES`). Larger input fails closed with
+  `InputTooLargeError` before detection, vault writes, or audit callbacks. Split
+  a large document into reviewed sections rather than raising this limit in an
+  untrusted browser path.
+
 - **Hiding names is not the same as being anonymous.** Even with every name and
   number stripped, the shape of the text can identify you: "$482.10, the word
   *insurance*, early January" can point at one person with no identifier left in
@@ -188,6 +194,11 @@ vanish. A receipt never contains the text itself, only a SHA-256 hash of it.
 Omit that argument and you get exactly the same redaction and the same
 fail-closed guard — just no receipt. Turn receipts on when you need to prove
 afterwards what left the device; leave them off when you don't.
+
+Receipts are tamper-evident records, not replay-prevention tokens. The signed
+Avow envelope is deterministic, so two identical decisions produce identical
+receipts; a downstream audit store must track receipt occurrences if it needs
+to count sends rather than only verify their content.
 
 Signing and verifying live in `@edgeproc/avow`, so add it alongside:
 `npm install @edgeproc/avow`.
@@ -344,6 +355,7 @@ Everything `src/index.ts` exports, and nothing more:
 | `NoLLMProvider` | class | offline echo provider |
 | `OpenRouterConfig` | interface | config for `OpenRouterProvider` (API key, model, endpoint) |
 | `OpenRouterProvider` | class | OpenAI-compatible provider |
+| `MAX_REDACTION_INPUT_BYTES` | const | UTF-8 input budget enforced before detection (512 KiB) |
 | `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
 | `rehydrate` | fn | restore real values locally from placeholders |
 | `AuditEntry` | interface | one append-only audit record (redact / approve / unsafe-bypass) |
@@ -355,8 +367,8 @@ Everything `src/index.ts` exports, and nothing more:
 | `Vault` | class | reversible token↔value map |
 
 Typed fail-closed errors are exported too: `ForgedPayloadError`,
-`PlaceholderCollisionError`, `ResidualValueError`, `UnapprovedPayloadError`,
-`UnresolvedPlaceholderError`, `VaultMismatchError`.
+`InputTooLargeError`, `PlaceholderCollisionError`, `ResidualValueError`,
+`UnapprovedPayloadError`, `UnresolvedPlaceholderError`, `VaultMismatchError`.
 
 The brand factory (`mintPendingRedaction`) and the `SYNTHETIC_STATEMENT` fixture
 are intentionally **not** on the front door — a payload can be earned, not
