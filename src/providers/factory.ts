@@ -11,6 +11,8 @@ export interface ProviderConfig {
   // Override the chat/completions URL — e.g. a same-origin dev proxy that keeps
   // the API key server-side instead of shipping it to the browser.
   readonly endpoint?: string | undefined;
+  readonly timeoutMs?: number | undefined;
+  readonly maxResponseBytes?: number | undefined;
 }
 
 /** A live provider plus a label for the UI to show which one is selected. */
@@ -35,6 +37,8 @@ export function makeProvider(config: ProviderConfig = {}): SelectedProvider {
         apiKey: config.apiKey,
         model,
         endpoint: config.endpoint,
+        timeoutMs: config.timeoutMs,
+        maxResponseBytes: config.maxResponseBytes,
       }),
       label: `OpenRouter · ${model}`,
     };

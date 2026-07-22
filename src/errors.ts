@@ -19,6 +19,28 @@ export class InputTooLargeError extends Error {
   }
 }
 
+/** Thrown when an OpenRouter request exceeds its bounded end-to-end deadline. */
+export class ProviderTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`OpenRouter request timed out after ${timeoutMs} ms`);
+    this.name = "ProviderTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/** Thrown before JSON parsing when an OpenRouter response exceeds its byte cap. */
+export class ProviderResponseTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super(`OpenRouter response exceeds the ${maxBytes}-byte limit`);
+    this.name = "ProviderResponseTooLargeError";
+    this.maxBytes = maxBytes;
+  }
+}
+
 /**
  * Thrown by {@link approve} when handed an object the redaction pipeline never
  * minted. A hand-built "pending" could smuggle unreviewed raw text past the

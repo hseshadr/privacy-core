@@ -39,6 +39,8 @@ export {
   ForgedPayloadError,
   InputTooLargeError,
   PlaceholderCollisionError,
+  ProviderResponseTooLargeError,
+  ProviderTimeoutError,
   ResidualValueError,
   UnapprovedPayloadError,
   UnresolvedPlaceholderError,
@@ -52,6 +54,8 @@ export {
 // Providers.
 export { NoLLMProvider } from "./providers/nollm.js";
 export {
+  DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES,
+  DEFAULT_OPENROUTER_TIMEOUT_MS,
   type OpenRouterConfig,
   OpenRouterProvider,
 } from "./providers/openrouter.js";

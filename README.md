@@ -179,6 +179,12 @@ is worse than claiming none.
   cross-site scripting bug, a compromised dependency — can reach them. There is
   no secure element or OS keychain involved.
 
+- **The OpenRouter adapter has bounded network resources.** Each request has a
+  30-second end-to-end deadline and accepts at most a 1 MiB UTF-8 response by
+  default. Override `timeoutMs` or `maxResponseBytes` in `OpenRouterConfig` only
+  when your host has a deliberate, tested budget; timeout and overflow failures
+  are typed and fail closed.
+
 If any of those limits are unacceptable for what you're doing, this is the wrong
 tool. Say so out loud rather than working around it.
 
@@ -350,11 +356,13 @@ Everything `src/index.ts` exports, and nothing more:
 | `EgressSubjectInput` | interface | what the caller supplies to build an `EgressSubject` |
 | `sealEgressReceipt` | fn | sign one egress decision into a receipt |
 | `makeProvider` | fn | config-driven provider selector |
-| `ProviderConfig` | interface | host-supplied config (API key, model, endpoint) for `makeProvider` |
+| `ProviderConfig` | interface | host-supplied config (API key, model, endpoint, timeout and response budget) for `makeProvider` |
 | `SelectedProvider` | interface | the provider `makeProvider` picked, plus a label for the UI |
 | `NoLLMProvider` | class | offline echo provider |
-| `OpenRouterConfig` | interface | config for `OpenRouterProvider` (API key, model, endpoint) |
+| `OpenRouterConfig` | interface | config for `OpenRouterProvider` (API key, model, endpoint, timeout and response budget) |
 | `OpenRouterProvider` | class | OpenAI-compatible provider |
+| `DEFAULT_OPENROUTER_TIMEOUT_MS` | const | default OpenRouter deadline (30 seconds) |
+| `DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES` | const | default OpenRouter response cap (1 MiB UTF-8) |
 | `MAX_REDACTION_INPUT_BYTES` | const | UTF-8 input budget enforced before detection (512 KiB) |
 | `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
 | `rehydrate` | fn | restore real values locally from placeholders |
@@ -367,8 +375,9 @@ Everything `src/index.ts` exports, and nothing more:
 | `Vault` | class | reversible token↔value map |
 
 Typed fail-closed errors are exported too: `ForgedPayloadError`,
-`InputTooLargeError`, `PlaceholderCollisionError`, `ResidualValueError`,
-`UnapprovedPayloadError`, `UnresolvedPlaceholderError`, `VaultMismatchError`.
+`InputTooLargeError`, `PlaceholderCollisionError`, `ProviderResponseTooLargeError`,
+`ProviderTimeoutError`, `ResidualValueError`, `UnapprovedPayloadError`,
+`UnresolvedPlaceholderError`, `VaultMismatchError`.
 
 The brand factory (`mintPendingRedaction`) and the `SYNTHETIC_STATEMENT` fixture
 are intentionally **not** on the front door — a payload can be earned, not

@@ -64,6 +64,9 @@ model's reply is rehydrated locally, so real values never cross the wire.
   `MAX_REDACTION_INPUT_BYTES` (512 KiB UTF-8) before detector or vault work, so
   a hostile paste cannot turn repeated residual checks into an unbounded client
   resource cost.
+- **Bounded provider I/O.** `OpenRouterProvider` aborts requests after
+  `DEFAULT_OPENROUTER_TIMEOUT_MS` (30 seconds) and streams responses through
+  `DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES` (1 MiB) before parsing JSON.
 - **A payload is earned, not forged.** The brand factory (`mintPendingRedaction`) is not
   exported from the barrel; test fixtures live behind `@edgeproc/privacy-core/testing`.
 - **The guarantee is tested at the wire.** The Playwright e2e intercepts the real

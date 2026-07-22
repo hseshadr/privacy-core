@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   getter), preserving the fail-closed error and receipt invariant.
 - Redaction now rejects inputs over 512 KiB of UTF-8 before detector, vault, or
   audit work, with an exported typed error and documented limit.
+- OpenRouter requests now have a 30-second default deadline and 1 MiB streamed
+  response cap, with optional configuration overrides and typed fail-closed
+  timeout/overflow errors.
 
 ## [0.2.1] — 2026-07-21
 

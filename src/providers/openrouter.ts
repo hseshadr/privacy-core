@@ -3,15 +3,25 @@ import {
   type LlmProvider,
   type RedactedPayload,
 } from "../egress.js";
+import {
+  ProviderResponseTooLargeError,
+  ProviderTimeoutError,
+} from "../errors.js";
 import type { RedactedResponse } from "../types.js";
 
 export interface OpenRouterConfig {
   readonly apiKey: string;
   readonly model: string;
   readonly endpoint?: string | undefined;
+  /** End-to-end request + response deadline in milliseconds. */
+  readonly timeoutMs?: number | undefined;
+  /** Maximum UTF-8 response body size accepted before JSON parsing. */
+  readonly maxResponseBytes?: number | undefined;
 }
 
 const DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+export const DEFAULT_OPENROUTER_TIMEOUT_MS = 30_000;
+export const DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES = 1_048_576;
 
 const SYSTEM_PROMPT =
   "You are a personal finance assistant. The user's text has had sensitive " +
@@ -43,19 +53,72 @@ export class OpenRouterProvider implements LlmProvider {
         { role: "user", content: payload.redactedText },
       ],
     });
-    const res = await fetch(this.cfg.endpoint ?? DEFAULT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.cfg.apiKey}`,
-      },
-      body,
-    });
-    if (!res.ok) {
-      throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+    const timeoutMs = this.cfg.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
+    const maxResponseBytes =
+      this.cfg.maxResponseBytes ?? DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(this.cfg.endpoint ?? DEFAULT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.cfg.apiKey}`,
+        },
+        body,
+        signal: controller.signal,
+      });
+      const responseText = await readResponseText(res, maxResponseBytes);
+      if (!res.ok) {
+        throw new Error(`OpenRouter ${res.status}: ${responseText}`);
+      }
+      const json = JSON.parse(responseText) as ChatCompletion;
+      const content = json.choices?.[0]?.message?.content ?? "";
+      return { redactedText: content };
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new ProviderTimeoutError(timeoutMs);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    const json = (await res.json()) as ChatCompletion;
-    const content = json.choices?.[0]?.message?.content ?? "";
-    return { redactedText: content };
+  }
+}
+
+async function readResponseText(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new ProviderResponseTooLargeError(maxBytes);
+  }
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new ProviderResponseTooLargeError(maxBytes);
+    }
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new ProviderResponseTooLargeError(maxBytes);
+      }
+      chunks.push(decoder.decode(chunk.value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    reader.releaseLock();
   }
 }

@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   approve,
+  DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES,
+  DEFAULT_OPENROUTER_TIMEOUT_MS,
   NoLLMProvider,
   OpenRouterProvider,
+  ProviderResponseTooLargeError,
+  ProviderTimeoutError,
   redactForEgress,
   Vault,
 } from "../src/index.js";
@@ -23,6 +27,99 @@ describe("NoLLMProvider (offline echo)", () => {
 
 describe("OpenRouterProvider", () => {
   const cfg = { apiKey: "test-key-not-real", model: "openai/gpt-4o-mini" };
+
+  it("exposes bounded production defaults", () => {
+    expect(DEFAULT_OPENROUTER_TIMEOUT_MS).toBe(30_000);
+    expect(DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES).toBe(1_048_576);
+  });
+
+  it("fails with a typed timeout when the endpoint never resolves", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, timeoutMs: 5 }).complete(payload),
+    ).rejects.toBeInstanceOf(ProviderTimeoutError);
+  });
+
+  it("fails closed before parsing a response larger than the configured cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("123456789", { status: 200 }),
+    );
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, maxResponseBytes: 8 }).complete(payload),
+    ).rejects.toBeInstanceOf(ProviderResponseTooLargeError);
+  });
+
+  it("rejects a response whose declared length already exceeds the cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "content-length": "9" },
+      }),
+    );
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, maxResponseBytes: 8 }).complete(payload),
+    ).rejects.toBeInstanceOf(ProviderResponseTooLargeError);
+  });
+
+  it("supports a bodyless response when its text stays within the cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: null,
+      text: async () => JSON.stringify({}),
+    } as Response);
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, maxResponseBytes: 8 }).complete(payload),
+    ).resolves.toEqual({ redactedText: "" });
+  });
+
+  it("rejects a bodyless response whose text exceeds the cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: null,
+      text: async () => "123456789",
+    } as Response);
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, maxResponseBytes: 8 }).complete(payload),
+    ).rejects.toBeInstanceOf(ProviderResponseTooLargeError);
+  });
 
   it("throws with status + body when the API responds non-OK", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
