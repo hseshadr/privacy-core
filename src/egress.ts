@@ -61,6 +61,8 @@ const mintedPending = new WeakSet<object>();
  */
 const approvedPayloads = new WeakSet<object>();
 
+const INVALID_PAYLOAD_TEXT = "<invalid-payload>";
+
 /**
  * Runtime half of the egress guard. Every provider adapter MUST call this
  * before doing anything with a payload; it rejects any object that was not
@@ -146,13 +148,25 @@ export function guardedProvider(
       try {
         assertApproved(payload);
       } catch (denied) {
-        await sealDecision(governance, payload.redactedText, "deny");
+        await sealDecision(governance, attemptedRedactedText(payload), "deny");
         throw denied;
       }
       await sealDecision(governance, payload.redactedText, "allow");
       return inner.complete(payload);
     },
   };
+}
+
+/** Keep malformed plain-JS calls auditable without dereferencing null/hostile values. */
+function attemptedRedactedText(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null)
+    return INVALID_PAYLOAD_TEXT;
+  try {
+    const text = (payload as { readonly redactedText?: unknown }).redactedText;
+    return typeof text === "string" ? text : INVALID_PAYLOAD_TEXT;
+  } catch {
+    return INVALID_PAYLOAD_TEXT;
+  }
 }
 
 /** Seal one guard decision and hand it to the governance sink, if governed. */

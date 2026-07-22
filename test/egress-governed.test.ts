@@ -104,6 +104,48 @@ describe("guardedProvider as a Writ-style governed egress effect", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("records malformed runtime payloads as denials instead of losing the receipt", async () => {
+    const inner = spyProvider();
+    const { governance, receipts } = collector();
+    const guarded = guardedProvider(inner, governance("openrouter"));
+
+    await expect(
+      guarded.complete(null as unknown as RedactedPayload),
+    ).rejects.toThrow(UnapprovedPayloadError);
+
+    expect(inner.calls).toHaveLength(0);
+    expect(receipts).toHaveLength(1);
+    const receipt = receipts[0];
+    if (!receipt) throw new Error("no denial receipt");
+    expect(receipt.payload.decision).toBe("deny");
+    expect(receipt.payload.args_digest).toBe(
+      await contentHash({ redactedText: "<invalid-payload>" }),
+    );
+    await expect(
+      verifySignature(receipt, await publicKeyHex(SEED_HEX)),
+    ).resolves.toBeUndefined();
+
+    const hostile = Object.defineProperty({}, "redactedText", {
+      get: () => {
+        throw new Error("hostile getter");
+      },
+    });
+    await expect(
+      guarded.complete(hostile as unknown as RedactedPayload),
+    ).rejects.toThrow(UnapprovedPayloadError);
+    expect(receipts).toHaveLength(2);
+    const hostileReceipt = receipts[1];
+    if (!hostileReceipt) throw new Error("no hostile denial receipt");
+    await expect(
+      verifySignature(hostileReceipt, await publicKeyHex(SEED_HEX)),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      guarded.complete({ redactedText: 42 } as unknown as RedactedPayload),
+    ).rejects.toThrow(UnapprovedPayloadError);
+    expect(receipts).toHaveLength(3);
+  });
+
   it("a pinned detectorVersion is recorded in the sealed receipt", async () => {
     const inner = spyProvider();
     const receipts: SignedReceipt<EgressSubject>[] = [];
