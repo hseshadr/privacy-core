@@ -5,6 +5,35 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-07-21
+
+First release shipped through the token-free OIDC release rail: a `v*` tag push
+runs the reusable `hseshadr/ci` publish workflow, which authenticates to npm as
+a registered Trusted Publisher — no npm token exists anywhere in this repo.
+No library code changes.
+
+### Added
+
+- Tag-triggered npm publish caller (`.github/workflows/publish.yml`) delegating
+  to the reusable `hseshadr/ci` ts-publish workflow via OIDC Trusted Publishing.
+- `repository.url` in `package.json` (required for npm OIDC trusted publishing).
+
+### Changed
+
+- README rewritten around a concrete scenario a first-time reader immediately
+  gets; docs scrubbed of internal vocabulary.
+- The receipt-sealing claim in the docs is scoped to its opt-in reality.
+
+### Security
+
+- All GitHub Actions pinned to full commit SHAs and enforced by the test suite;
+  the publish caller pins the `hseshadr/ci` reusable workflow to an immutable
+  SHA (ci-v2.0.3), closing the transitive pinning hole.
+- pnpm supply-chain cooldown (minimum release age) restored and guarded with a
+  test against silent exemptions.
+- Signature and residual-leak tests strengthened to exercise the properties
+  they name.
+
 ## [0.2.0] — 2026-07-20
 
 A breaking release (the egress API changed, see below). Also drops the local
