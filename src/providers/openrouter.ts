@@ -4,6 +4,7 @@ import {
   type RedactedPayload,
 } from "../egress.js";
 import {
+  MalformedProviderResponseError,
   ProviderResponseTooLargeError,
   ProviderTimeoutError,
 } from "../errors.js";
@@ -73,7 +74,12 @@ export class OpenRouterProvider implements LlmProvider {
         throw new Error(`OpenRouter ${res.status}: ${responseText}`);
       }
       const json = JSON.parse(responseText) as ChatCompletion;
-      const content = json.choices?.[0]?.message?.content ?? "";
+      const content = json.choices?.[0]?.message?.content;
+      if (typeof content !== "string") {
+        // A missing/non-string message is a broken reply. Returning "" here
+        // would hand back an empty answer indistinguishable from a real one.
+        throw new MalformedProviderResponseError();
+      }
       return { redactedText: content };
     } catch (error) {
       if (controller.signal.aborted) {
@@ -95,13 +101,42 @@ async function readResponseText(
     throw new ProviderResponseTooLargeError(maxBytes);
   }
   if (!response.body) {
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > maxBytes) {
-      throw new ProviderResponseTooLargeError(maxBytes);
-    }
-    return text;
+    return readUnstreamedText(response, maxBytes);
   }
-  const reader = response.body.getReader();
+  return readStreamedText(response.body, maxBytes);
+}
+
+/**
+ * No stream to meter chunk-by-chunk, so the cap can only be enforced BEFORE
+ * buffering via the declared content-length. A missing (or non-numeric) header
+ * cannot bound `.text()`, so we fail closed rather than buffer an unbounded body
+ * — the same stance the streamed path takes on overflow. A lying content-length
+ * (declared small, actual large) is still caught by the post-read byte check.
+ */
+async function readUnstreamedText(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const header = response.headers.get("content-length");
+  // `Number(null)` is 0 (finite), so absence must be detected from the raw
+  // header, not from the coerced number.
+  const declared = header === null ? Number.NaN : Number(header);
+  if (!Number.isFinite(declared)) {
+    throw new ProviderResponseTooLargeError(maxBytes);
+  }
+  const text = await response.text();
+  if (new TextEncoder().encode(text).byteLength > maxBytes) {
+    throw new ProviderResponseTooLargeError(maxBytes);
+  }
+  return text;
+}
+
+/** Read a body stream, cancelling and failing closed the instant it exceeds the cap. */
+async function readStreamedText(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<string> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
   let totalBytes = 0;

@@ -15,3 +15,9 @@ minimumReleaseAge: 1440
 onlyBuiltDependencies:
   - "@biomejs/biome"
   - esbuild
+
+# Force the transitive dev-only postcss (pulled in via vitest -> vite) to the
+# patched line for GHSA-r28c-9q8g-f849 (path traversal in source-map auto-load,
+# fixed in >=8.5.18). Not shipped in dist; dev/build tooling only.
+overrides:
+  postcss: ">=8.5.18"

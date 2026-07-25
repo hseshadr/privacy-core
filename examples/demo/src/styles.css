@@ -143,3 +143,42 @@ button:disabled {
   font-size: 0.82rem;
   min-height: 1.2rem;
 }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.toggle input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+button.danger {
+  background: transparent;
+  color: var(--raw);
+  border: 1px solid var(--raw);
+}
+
+.receipt code {
+  color: var(--token);
+}
+.receipt-deny code {
+  color: var(--raw);
+}
+.receipt em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.72rem;
+}

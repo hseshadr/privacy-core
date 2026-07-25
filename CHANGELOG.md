@@ -7,16 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-25
+
+Hardening release, and the first cut published with npm build **provenance** — a
+signed, public transparency-log attestation linking the package to this repo and
+its publish workflow. No public API breaks.
+
+### Security
+
+- **IBAN detection is no longer vulnerable to catastrophic backtracking.** The
+  recognizer nested a bounded quantifier inside an unbounded one
+  (`(?:\s?[A-Z0-9]{2,4})+`); a crafted near-IBAN froze the browser thread for
+  ~0.5s (exponential in input length), defeating the "synchronous detection
+  bounded on the browser thread" guarantee. Replaced with a linear,
+  whitespace-tolerant pattern, guarded by a performance regression test.
+- Dev-only `postcss` forced to the patched line (`>=8.5.18`) for
+  GHSA-r28c-9q8g-f849 (source-map path traversal). It ships only in build
+  tooling, never in `dist`; `pnpm audit` is clean including dev dependencies.
+
 ### Fixed
 
-- Governed egress now records a signed denial even when a plain-JavaScript caller
+- **Silent failures now surface as typed, fail-closed errors.** `makeProvider`
+  no longer returns the offline echo when a production API key is merely missing:
+  the offline provider is opt-in via `allowOffline: true`, and a missing key
+  throws the new `MissingApiKeyError`. `OpenRouterProvider` throws the new
+  `MalformedProviderResponseError` instead of returning `""` when a reply lacks a
+  string `choices[0].message.content`, and enforces the response byte cap BEFORE
+  buffering a non-streamed body (a missing/untrusted `content-length` fails closed
+  rather than buffering unbounded).
+- **Governed egress now awaits the `onReceipt` sink**, so a send does not complete
+  until the decision receipt has been durably handled (`onReceipt` may return a
+  promise).
+- Governed egress records a signed denial even when a plain-JavaScript caller
   supplies a malformed payload (`null`, a non-string text field, or a hostile
   getter), preserving the fail-closed error and receipt invariant.
-- Redaction now rejects inputs over 512 KiB of UTF-8 before detector, vault, or
+- Redaction rejects inputs over 512 KiB of UTF-8 before detector, vault, or
   audit work, with an exported typed error and documented limit.
-- OpenRouter requests now have a 30-second default deadline and 1 MiB streamed
+- OpenRouter requests have a 30-second default deadline and 1 MiB streamed
   response cap, with optional configuration overrides and typed fail-closed
   timeout/overflow errors.
+
+### Changed
+
+- All typed errors now share an exported `PrivacyCoreError` base, so a consumer
+  can catch every boundary failure with one `instanceof`.
+- `AuditEntry` is now a discriminated union on `kind` (`redact`/`approve` carry
+  `placeholders`; `unsafe-bypass` carries `reason`), and its member types are
+  exported. A minted `PendingRedaction`'s `placeholders` array is deep-frozen.
+- The runnable demo now demonstrates both advertised guarantees directly: a
+  "Sign egress receipts" toggle seals each allow/deny as a signed receipt, and a
+  "Try to send without approval" action shows the fail-closed refusal. The
+  Playwright e2e suite drives both.
+- Remaining internal vocabulary removed from shipped and public-facing surfaces
+  (source doc comments, tests, and `CLAUDE.md`).
 
 ## [0.2.1] — 2026-07-21
 

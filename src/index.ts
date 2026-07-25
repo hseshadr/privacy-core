@@ -23,7 +23,7 @@ export {
   type RedactedPayload,
   unsafeBypass,
 } from "./egress.js";
-// Signed egress receipts (the Writ-style effect face).
+// Signed egress receipts.
 export {
   buildEgressSubject,
   contentHash,
@@ -38,7 +38,10 @@ export {
 export {
   ForgedPayloadError,
   InputTooLargeError,
+  MalformedProviderResponseError,
+  MissingApiKeyError,
   PlaceholderCollisionError,
+  PrivacyCoreError,
   ProviderResponseTooLargeError,
   ProviderTimeoutError,
   ResidualValueError,
@@ -67,11 +70,14 @@ export {
 export { rehydrate } from "./rehydrate.js";
 // Public domain types.
 export type {
+  ApproveAuditEntry,
   AuditEntry,
   AuditSink,
   EntityType,
+  RedactAuditEntry,
   RedactedResponse,
   Span,
+  UnsafeBypassAuditEntry,
   VaultRef,
 } from "./types.js";
 export { Vault } from "./vault.js";

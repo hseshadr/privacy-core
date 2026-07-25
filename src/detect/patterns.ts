@@ -16,8 +16,15 @@ export interface Rule {
 export const RULES: readonly Rule[] = [
   { type: "EMAIL", re: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g },
   {
+    // Linear, ReDoS-safe recognizer. An IBAN is 2 letters + 2 check digits +
+    // 11-30 BBAN characters (grouped in fours in print). Each remaining unit is
+    // ONE alphanumeric optionally preceded by a single space (`\s?[A-Z0-9]`), so
+    // there is no nested quantifier for a hostile run to backtrack across — the
+    // earlier `(?:\s?[A-Z0-9]{2,4})+` could partition a run into 2-4 chunks in
+    // exponentially many ways and froze the thread. `ibanValid` mod-97-checks
+    // the candidate (stripping spaces) before it is accepted.
     type: "IBAN",
-    re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{2,4})+\b/g,
+    re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]){11,30}\b/g,
     accept: ibanValid,
   },
   { type: "CARD", re: /\b(?:\d[ -]?){13,19}\b/g, accept: luhnValid },

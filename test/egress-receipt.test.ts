@@ -53,7 +53,7 @@ async function rejectionOf(promise: Promise<unknown>): Promise<AvowError> {
   throw new Error("expected verification to reject, but it resolved");
 }
 
-describe("egress subject (a Writ-style effect over the egress decision)", () => {
+describe("egress subject (a governed record of the egress decision)", () => {
   it("digests only the redacted text, never storing the plaintext", async () => {
     const subject = await buildEgressSubject({
       provider: "openrouter",

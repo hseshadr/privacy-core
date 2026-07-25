@@ -2,30 +2,28 @@
 
 Guidance for Claude Code when working in this repository.
 
-## Status
+## What this is
 
-Portfolio rank, tier, current state, and the next gating move are tracked in **one
-place** — a private portfolio index — so never restate status claims in this file.
-The (private) design spec defines privacy-core as a browser-side privacy boundary for
-LLM calls: raw text stays on-device, only policy-approved redacted text egresses, and
-replies are rehydrated locally from an in-memory vault. The (private) house
-engineering standard sets the bar this repo builds against — toolchain, gate
-composition, CI shape, release discipline, and the WASM/edge-compute rules cited
-below as §8.
+`@edgeproc/privacy-core` is a browser-side privacy boundary for LLM calls: raw
+text stays on-device, only policy-approved redacted text egresses, and replies
+are rehydrated locally from an in-memory vault. The current version and what has
+shipped live in `CHANGELOG.md` and on npm — don't restate release status in this
+file.
 
 ## Stack
 
 TypeScript strict / pnpm (pinned via `packageManager`) / Node >= 22.13 (24 in CI) /
 Biome (lint + format + cognitive-complexity) / Vitest 4 with coverage thresholds
-(90 lines / 90 functions / 85 branches) / Playwright e2e / `tsc` build. Zero runtime
-dependencies — everything in `devDependencies` is toolchain.
+pinned at 100% (statements / lines / functions / branches) / Playwright e2e /
+`tsc` build. One runtime dependency — `@edgeproc/avow`, the receipt-signing
+envelope; everything else in `devDependencies` is toolchain.
 
 ## Layout
 
 ```
 src/            library source — see docs/ARCHITECTURE.md for the 1:1 module map
   index.ts      public API barrel (production surface, nothing else)
-  egress.ts     the differentiated layer: branded RedactedPayload + LlmProvider + unsafeBypass
+  egress.ts     the enforcement layer: branded RedactedPayload + LlmProvider + unsafeBypass
   detect/       deterministic detection spine (patterns + checksums + dictionaries)
   providers/    NoLLMProvider (offline echo), OpenRouterProvider, makeProvider
   testing.ts    fixtures — exported ONLY via the ./testing subpath
@@ -35,9 +33,9 @@ examples/demo/  runnable Vite demo consuming only the public API
 docs/           ARCHITECTURE.md, QUICKSTART.md, diagrams/ (d2 + rendered svg)
 ```
 
-## Invariants (don't break without updating the spec)
+## Invariants (don't break without updating the docs)
 
-- **The type-enforced Egress Guard is the differentiated layer.** Providers accept only the branded
+- **The type-enforced Egress Guard is the enforcement layer.** Providers accept only the branded
   `RedactedPayload`; `redactForEgress` is its only public constructor. Handing raw
   text to a provider is a *compile error*. `mintPendingRedaction` never leaves the
   internal module; fixtures never leave `./testing`.
@@ -55,10 +53,9 @@ docs/           ARCHITECTURE.md, QUICKSTART.md, diagrams/ (d2 + rendered svg)
 ## Workflow
 
 - TDD: red → green → refactor; bug fixes start with a failing regression test.
-- Branch off `main` → PR → CI green → merge → delete branch. Never merge without the
-  user's go-ahead; the repo stays private until the user flips visibility.
-- Docs follow code: README/ARCHITECTURE describe only what is shipped (§8.2
-  truth-in-labeling — no unshipped-runtime claims).
+- Branch off `main` → PR → CI green → merge → delete branch.
+- Docs follow code: README/ARCHITECTURE describe only what is shipped — no claims
+  about unshipped runtime behaviour.
 
 ## Commands
 
@@ -73,34 +70,33 @@ pnpm lint:fix        # biome check --write
 
 ## Quality Gates (Non-Negotiable)
 
-Each rule carries the scar it exists to prevent:
+Each rule carries the failure it exists to prevent:
 
 - **`pnpm gate` green before every push, and CI literally runs `pnpm gate`.**
-  Scar: this repo's own CI hand-copied five gate steps for six weeks — the day the
-  gate gained coverage enforcement, a hand-copied CI would have silently kept the
-  old uncovered path. Portfolio scar: edge-reco's `poe lint` missed
-  `ruff format --check` and CI/local drifted until a red remote surprised a green
-  local. Drift is a config bug fixed in the same commit that finds it.
-- **Coverage thresholds are enforced, not reported.** Scar: this repo sat at 79.48%
-  branch coverage behind a fully green suite — the OpenRouter error path,
-  the unknown-token rehydrate fallback, and the overlap tie-break had zero tests
-  until thresholds (90/90/85) forced them into the light (2026-07-11).
-- **The e2e wire-proof must keep driving the real demo.** Scar (portfolio): an
-  "OpenRouter-only" change once shipped CI-green with the selector buried in an
-  unlinked tab — unit-green, product-broken. Only the placeholders-on-the-wire
-  Playwright assertion proves the product's actual promise.
-- **Never mix browser-safe and node-only exports in a barrel.** Scar (portfolio):
-  a `node:fs` re-export in a test-seam barrel poisoned every browser importer;
-  build-green, runtime-dead — only e2e caught it. `src/index.ts` stays
+  If the local gate and the CI gate ever describe different steps, a change can
+  pass locally and break remotely (or vice versa). Drift between them is a config
+  bug, fixed in the same commit that finds it — never worked around.
+- **Coverage thresholds are enforced, not reported.** They sit at 100% because a
+  floor below the achieved number silently absorbs a regression. This repo once
+  sat at 79% branch coverage behind a fully green suite — the OpenRouter error
+  path, the unknown-token rehydrate fallback, and the overlap tie-break had zero
+  tests until thresholds forced them into the light.
+- **The e2e wire-proof must keep driving the real demo.** A green unit suite is
+  not proof the product works: a feature can be unit-green yet unreachable in the
+  app. Only the placeholders-on-the-wire Playwright assertion proves the actual
+  promise — that no raw value crosses the network boundary.
+- **Never mix browser-safe and node-only exports in a barrel.** A single
+  `node:fs` re-export in a shared barrel poisons every browser importer:
+  build-green, runtime-dead, and only e2e catches it. `src/index.ts` stays
   browser-safe.
-- **Scheduled workflows count as CI.** Scar (portfolio): the first-ever
-  security-audit run caught 2 live CVEs behind a green CI badge. Check
-  `gh run list --workflow=security-audit.yml` — red scheduled run = red repo.
+- **Scheduled workflows count as CI.** A weekly `security-audit` run can catch a
+  live CVE behind an otherwise green badge. Check
+  `gh run list --workflow=security-audit.yml` — a red scheduled run is a red repo.
 
-## §8 (WASM / edge-compute standard) declaration
+## WASM / edge-compute readiness
 
-**§8: not applicable yet.** privacy-core ships no browser WASM runtime today — the
-detection spine is pure TypeScript. §8 becomes applicable (patterns **b** — vendored
-WASM runtimes + parity-tested TS, and **c** — sqlite-wasm/OPFS storage) when
-in-browser NER models land (the deferred contextual-NER roadmap item). Adopt the
-ORT-web embedder hardening config already proven in a sibling app at that point.
+privacy-core ships no browser WASM runtime today — the detection spine is pure
+TypeScript. The WASM/edge-compute hardening rules (vendored WASM runtimes with
+parity-tested TS, and sqlite-wasm/OPFS storage) become applicable only when
+in-browser NER models land (the deferred contextual-NER roadmap item). Adopt a
+proven ORT-web embedder hardening config at that point.
