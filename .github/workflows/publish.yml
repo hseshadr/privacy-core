@@ -13,9 +13,11 @@
 #      every tag push after that runs through here, token-free. Because 0.2.0 is already
 #      taken, the next release tag must carry a HIGHER version — re-tagging v0.2.0 would
 #      just 403 (npm forbids overwriting a published version).
-#   2. `provenance` stays FALSE until the repo is PUBLIC — `--provenance` writes a public
-#      transparency-log entry and fails on a private repo. Flip it true in the same wave
-#      privacy-core goes public. `repository.url` is now present in package.json and matches
+#   2. `provenance` is TRUE: the repo is PUBLIC now, and `--provenance` writes a public
+#      transparency-log entry linking each release to this repo + workflow. It takes
+#      effect on the NEXT release tag — 0.2.0 is already live without provenance and is
+#      not re-published (npm forbids overwriting a version; no forced bump for provenance
+#      alone). `repository.url` is now present in package.json and matches
 #      the GitHub repo, which npm OIDC requires (absent or mismatched, the publish ENEEDAUTHs).
 #
 # run-gate is FALSE here: the full gate (biome -> tsc -> vitest -> playwright e2e -> build)
@@ -45,4 +47,4 @@ jobs:
       working-directory: "."
       install-args: "--frozen-lockfile --config.dangerously-allow-all-builds=true"
       run-gate: false
-      provenance: false # flip true only when the repo is public
+      provenance: true # repo is public — provenance writes a public transparency-log entry
