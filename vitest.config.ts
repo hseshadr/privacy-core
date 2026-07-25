@@ -8,7 +8,7 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["src/testing.ts"],
-      // Pinned to what this suite ACHIEVES, not to the portfolio floor. A floor
+      // Pinned to what this suite ACHIEVES, not to a lower floor. A floor
       // set below the achieved number silently absorbs a regression: coverage
       // could fall from 100% to 90% and the gate would stay green. At the real
       // value, any newly uncovered line is a failure rather than slack. And

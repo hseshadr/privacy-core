@@ -366,7 +366,10 @@ Everything `src/index.ts` exports, and nothing more:
 | `MAX_REDACTION_INPUT_BYTES` | const | UTF-8 input budget enforced before detection (512 KiB) |
 | `redactForEgress` | fn | detect → vault-write → brand → a `PendingRedaction` proposal |
 | `rehydrate` | fn | restore real values locally from placeholders |
-| `AuditEntry` | interface | one append-only audit record (redact / approve / unsafe-bypass) |
+| `AuditEntry` | type | one append-only audit record — a discriminated union of the three below |
+| `RedactAuditEntry` | interface | audit record for a redact step |
+| `ApproveAuditEntry` | interface | audit record for an approve step |
+| `UnsafeBypassAuditEntry` | interface | audit record for an explicit unsafe-bypass |
 | `AuditSink` | type | the audit callback signature callers supply to `approve`/`unsafeBypass` |
 | `EntityType` | type | the PII categories the detector recognizes (CARD, SSN, EMAIL, ...) |
 | `RedactedResponse` | interface | a provider's reply, still in placeholder form until rehydrated |
@@ -374,8 +377,9 @@ Everything `src/index.ts` exports, and nothing more:
 | `VaultRef` | interface | opaque handle to a vault's token → value mappings |
 | `Vault` | class | reversible token↔value map |
 
-Typed fail-closed errors are exported too: `ForgedPayloadError`,
-`InputTooLargeError`, `PlaceholderCollisionError`, `ProviderResponseTooLargeError`,
+Typed fail-closed errors are exported too, all extending the `PrivacyCoreError`
+base class: `ForgedPayloadError`, `InputTooLargeError`, `MalformedProviderResponseError`,
+`MissingApiKeyError`, `PlaceholderCollisionError`, `ProviderResponseTooLargeError`,
 `ProviderTimeoutError`, `ResidualValueError`, `UnapprovedPayloadError`,
 `UnresolvedPlaceholderError`, `VaultMismatchError`.
 
