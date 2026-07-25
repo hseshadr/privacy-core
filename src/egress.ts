@@ -87,7 +87,14 @@ export function mintPendingRedaction(
   vaultRef: VaultRef,
   placeholders: readonly string[],
 ): PendingRedaction {
-  const pending = Object.freeze({ redactedText, vaultRef, placeholders });
+  // Deep-freeze: freeze the placeholders array too, not just the wrapper, so the
+  // reviewed token set cannot be mutated after minting (it also flows verbatim
+  // into the approve() audit entry).
+  const pending = Object.freeze({
+    redactedText,
+    vaultRef,
+    placeholders: Object.freeze([...placeholders]),
+  });
   mintedPending.add(pending);
   return pending as PendingRedaction;
 }
@@ -134,7 +141,7 @@ export function approve(
  * wrapper makes that impossible for any provider obtained through it.
  *
  * With `governance`, the chokepoint additionally seals EVERY decision — each
- * allow and each fail-closed deny — as a signed Avow effect receipt (see
+ * allow and each fail-closed deny — as a signed egress receipt (see
  * {@link file://./egressReceipt.ts}). The deny receipt digests the redacted
  * text that was ATTEMPTED, and only its hash; nothing reaches the inner
  * provider on a deny either way.
@@ -177,7 +184,10 @@ async function sealDecision(
 ): Promise<void> {
   if (!governance) return;
   const { provider, seedHex, onReceipt, detectorVersion } = governance;
-  onReceipt(
+  // Await onReceipt: a sink that persists the receipt must finish before the
+  // send is allowed to complete, or a crash could drop the record of a decision
+  // that already left the device.
+  await onReceipt(
     await sealEgressReceipt(
       {
         provider,

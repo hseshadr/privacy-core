@@ -3,6 +3,7 @@ import {
   approve,
   DEFAULT_OPENROUTER_MAX_RESPONSE_BYTES,
   DEFAULT_OPENROUTER_TIMEOUT_MS,
+  MalformedProviderResponseError,
   NoLLMProvider,
   OpenRouterProvider,
   ProviderResponseTooLargeError,
@@ -10,6 +11,10 @@ import {
   redactForEgress,
   Vault,
 } from "../src/index.js";
+
+const utf8Len = (s: string): number => new TextEncoder().encode(s).byteLength;
+const okCompletion = (content: string): string =>
+  JSON.stringify({ choices: [{ message: { content } }] });
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -85,13 +90,37 @@ describe("OpenRouterProvider", () => {
     ).rejects.toBeInstanceOf(ProviderResponseTooLargeError);
   });
 
-  it("supports a bodyless response when its text stays within the cap", async () => {
+  it("supports a bodyless response with a declared length within the cap", async () => {
+    const body = okCompletion("ok");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-length": String(utf8Len(body)) }),
+      body: null,
+      text: async () => body,
+    } as Response);
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await expect(
+      new OpenRouterProvider({ ...cfg, maxResponseBytes: 1024 }).complete(
+        payload,
+      ),
+    ).resolves.toEqual({ redactedText: "ok" });
+  });
+
+  it("refuses a bodyless response with no declared length (cannot be bounded before buffering)", async () => {
+    // No stream to meter chunk-by-chunk AND no content-length to bound the read
+    // means the cap cannot be enforced BEFORE `.text()` buffers the whole body,
+    // so the reader fails closed rather than buffer an unbounded response.
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers(),
       body: null,
-      text: async () => JSON.stringify({}),
+      text: async () => "123456789",
     } as Response);
     const payload = approve(
       await redactForEgress("hello", new Vault()),
@@ -100,14 +129,16 @@ describe("OpenRouterProvider", () => {
 
     await expect(
       new OpenRouterProvider({ ...cfg, maxResponseBytes: 8 }).complete(payload),
-    ).resolves.toEqual({ redactedText: "" });
+    ).rejects.toBeInstanceOf(ProviderResponseTooLargeError);
   });
 
-  it("rejects a bodyless response whose text exceeds the cap", async () => {
+  it("rejects a bodyless response whose declared length lies and actual bytes exceed the cap", async () => {
+    // Declared length passes the pre-read check but the real body is larger — a
+    // lying content-length must still be caught after the bounded read.
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Headers(),
+      headers: new Headers({ "content-length": "2" }),
       body: null,
       text: async () => "123456789",
     } as Response);
@@ -134,9 +165,37 @@ describe("OpenRouterProvider", () => {
     );
   });
 
-  it("returns empty text when the completion has no choices", async () => {
+  it.each([
+    ["no choices array", JSON.stringify({})],
+    ["an empty choices array", JSON.stringify({ choices: [] })],
+    ["a choice with no message", JSON.stringify({ choices: [{}] })],
+    [
+      "a message with no content",
+      JSON.stringify({ choices: [{ message: {} }] }),
+    ],
+    [
+      "a non-string content",
+      JSON.stringify({ choices: [{ message: { content: 42 } }] }),
+    ],
+  ])("fails closed with MalformedProviderResponseError on %s", async (_label, body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({}), {
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+    await expect(
+      new OpenRouterProvider(cfg).complete(payload),
+    ).rejects.toBeInstanceOf(MalformedProviderResponseError);
+  });
+
+  it("returns an empty-string content verbatim (a valid, if empty, reply)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(okCompletion(""), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),

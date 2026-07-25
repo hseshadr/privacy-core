@@ -1,11 +1,11 @@
 /**
- * Egress decisions, sealed as signed Avow effect receipts.
+ * Egress decisions, sealed as signed, tamper-evident receipts.
  *
  * The Egress Guard already gates whether redacted text may leave the device
  * (see {@link file://./egress.ts}). This module makes that decision *provable*:
- * an allow or deny is expressed as a Writ-style governed effect — an
+ * an allow or deny is expressed as a small governed record — an
  * `EgressSubject` — and signed into a tamper-evident receipt via the shared
- * `@edgeproc/avow` envelope. A holder of the signer's public key can later
+ * `@edgeproc/avow` signing envelope. A holder of the signer's public key can later
  * verify exactly which egress decisions were taken, without ever seeing the
  * content.
  *
@@ -85,8 +85,14 @@ export interface EgressGovernance {
   readonly provider: string;
   /** Ed25519 seed (hex) that signs the receipts. */
   readonly seedHex: string;
-  /** Receives every sealed decision receipt. */
-  readonly onReceipt: (receipt: SignedReceipt<EgressSubject>) => void;
+  /**
+   * Receives every sealed decision receipt. May be async (e.g. it persists the
+   * receipt); the guard awaits it, so the send does not complete until the
+   * receipt has been durably handled.
+   */
+  readonly onReceipt: (
+    receipt: SignedReceipt<EgressSubject>,
+  ) => void | Promise<void>;
   readonly detectorVersion?: string;
 }
 

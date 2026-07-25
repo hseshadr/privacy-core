@@ -25,12 +25,37 @@ export interface VaultRef {
   readonly id: string;
 }
 
-/** An audit record — metadata only, never raw PII (except the explicit bypass case). */
-export interface AuditEntry {
-  readonly kind: "redact" | "approve" | "unsafe-bypass";
+/**
+ * An audit record — metadata only, never raw PII (except the explicit bypass
+ * case, which records the human-supplied reason). Modelled as a discriminated
+ * union on `kind`, so the fields that exist for each event are exact: `redact`
+ * and `approve` always carry `placeholders`, `unsafe-bypass` always carries
+ * `reason`, and no entry can be constructed with the wrong shape.
+ */
+export type AuditEntry =
+  | RedactAuditEntry
+  | ApproveAuditEntry
+  | UnsafeBypassAuditEntry;
+
+/** A redaction proposal was minted, listing the placeholder tokens produced. */
+export interface RedactAuditEntry {
+  readonly kind: "redact";
   readonly at: number;
-  readonly placeholders?: readonly string[];
-  readonly reason?: string;
+  readonly placeholders: readonly string[];
+}
+
+/** A pending redaction was explicitly approved for egress. */
+export interface ApproveAuditEntry {
+  readonly kind: "approve";
+  readonly at: number;
+  readonly placeholders: readonly string[];
+}
+
+/** Raw text was sent via the audited escape hatch, recording the human reason. */
+export interface UnsafeBypassAuditEntry {
+  readonly kind: "unsafe-bypass";
+  readonly at: number;
+  readonly reason: string;
 }
 
 /** A sink the caller supplies to receive append-only audit entries. */

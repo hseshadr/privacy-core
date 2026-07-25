@@ -121,4 +121,20 @@ describe("residual guard — benign superstrings now SEND", () => {
     const wire = approve(pending, () => {}).redactedText;
     expect(wire).toContain("1002003009");
   });
+
+  // Overlap regression: a merchant-dictionary hit ("Amazon") starts at the same
+  // offset as a longer EMAIL match ("Amazon@example.com"). The detector's
+  // same-start overlap resolution drops the shorter MERCHANT span, so
+  // assertNoResidual only ever sees the surviving EMAIL span. It must NOT
+  // spuriously flag the dropped "Amazon" as a residual value, and the redaction
+  // must send cleanly with the whole email replaced.
+  it("does not false-refuse when a merchant name overlaps a detected email", async () => {
+    const input = "Contact Amazon@example.com about the order.";
+    const pending = await redactForEgress(input, new Vault());
+    expect(pending.redactedText).toContain("[EMAIL_1]");
+    expect(pending.redactedText).not.toContain("Amazon@example.com");
+    const wire = approve(pending, () => {}).redactedText;
+    expect(wire).not.toContain("Amazon");
+    expect(wire).toContain("[EMAIL_1]");
+  });
 });

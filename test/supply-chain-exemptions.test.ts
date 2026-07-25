@@ -15,15 +15,15 @@ import { describe, expect, it } from "vitest";
 //
 // The install still exits 0, so the developer is left holding a modified
 // workspace file that rides along in the next `git commit -a`. That is exactly
-// how the key reached this repo's `main`, and it has slipped into commits
-// elsewhere in this portfolio and been reverted twice.
+// how the key reached this repo's `main`, and it has slipped into commits in
+// related repositories and been reverted more than once.
 //
 // A committed exemption permanently disables the cooldown for the listed
 // packages — in CI too — so a compromised fresh release of those packages
 // installs without resistance. First-party packages are NOT a safe carve-out:
 // a first-party exemption is still an unmonitored hole, and carving out
-// first-party refs is precisely what concealed a live supply-chain gap
-// elsewhere in this portfolio. This guard fails the gate the moment the key
+// first-party refs is precisely what concealed a live supply-chain gap in a
+// related repository. This guard fails the gate the moment the key
 // reappears as an active setting.
 
 const testDir = dirname(fileURLToPath(import.meta.url));

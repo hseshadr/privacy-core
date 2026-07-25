@@ -21,7 +21,7 @@
 // This file previously checked ONLY (1) while being named for all of it, so an
 // insecure change to (2) or (3) landed green. Each rule below is paired with
 // its own accept/reject cases so the rule itself is proven, not assumed.
-// This is the TypeScript twin of the portfolio's tests/test_workflow_security.py.
+// This is the TypeScript twin of a shared workflow-security test.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

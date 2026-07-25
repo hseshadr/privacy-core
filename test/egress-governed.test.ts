@@ -50,7 +50,7 @@ function collector(): {
   };
 }
 
-describe("guardedProvider as a Writ-style governed egress effect", () => {
+describe("guardedProvider as a governed egress boundary", () => {
   it("an approved egress reaches the provider AND emits a verifiable allow receipt", async () => {
     const inner = spyProvider();
     const { governance, receipts } = collector();
@@ -165,6 +165,33 @@ describe("guardedProvider as a Writ-style governed egress effect", () => {
     await guarded.complete(payload);
 
     expect(receipts[0]?.payload.detector_version).toBe("2");
+  });
+
+  it("awaits an async onReceipt before completing the send", async () => {
+    const inner = spyProvider();
+    let onReceiptDone = false;
+    const guarded = guardedProvider(inner, {
+      provider: "openrouter",
+      seedHex: SEED_HEX,
+      onReceipt: async () => {
+        // Defer the flag to a macrotask. A guard that AWAITS onReceipt resolves
+        // only after this fires; the fire-and-forget bug resolves before it, so
+        // the flag is still false when complete() returns.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        onReceiptDone = true;
+      },
+    });
+    const payload = approve(
+      await redactForEgress("hello", new Vault()),
+      () => {},
+    );
+
+    await guarded.complete(payload);
+
+    // The receipt sink's async work has fully settled by the time the send
+    // completed — an unawaited onReceipt would leave this false.
+    expect(onReceiptDone).toBe(true);
+    expect(inner.calls).toHaveLength(1);
   });
 
   it("without governance, guardedProvider keeps its original guard-only behavior", async () => {

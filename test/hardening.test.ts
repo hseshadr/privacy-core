@@ -31,6 +31,19 @@ describe("Vault.ref is frozen (the payload binding cannot be rewritten)", () => 
   });
 });
 
+describe("a minted pending's placeholders array is deep-frozen", () => {
+  it("cannot be mutated after minting", async () => {
+    const pending = await redactForEgress("Pay Ada Lovelace.", new Vault());
+    expect(pending.placeholders).toContain("[NAME_1]");
+    expect(Object.isFrozen(pending.placeholders)).toBe(true);
+    expect(() => {
+      // @ts-expect-error placeholders is readonly; it is also frozen at runtime.
+      pending.placeholders.push("[INJECTED_9]");
+    }).toThrow(TypeError);
+    expect(pending.placeholders).not.toContain("[INJECTED_9]");
+  });
+});
+
 describe("guardedProvider is the single-chokepoint runtime guard", () => {
   it("enforces assertApproved even when the wrapped provider forgot to", async () => {
     // A careless third-party provider that never calls assertApproved.
