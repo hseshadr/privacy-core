@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@edgeproc/avow':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.16
@@ -127,8 +127,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@edgeproc/avow@0.1.0':
-    resolution: {integrity: sha512-oPbnzyFIzfBBTQjXtnxqdmSXuWFIfVKKkGBayBBVbxyCvOFAhODvXmvhqJsDTMos/aV060DwcQYijUmGnAaiGQ==}
+  '@edgeproc/avow@0.1.1':
+    resolution: {integrity: sha512-BgqgxPox/PpLSNL7gKN8tovrOBSuLBVk2uAnYu8+5ZXq7KKQBPvSZCA/qF9vkAVE6ubRXm4TcOPJBicy51sALg==}
     engines: {node: '>=22.13'}
 
   '@emnapi/core@1.11.1':
@@ -831,7 +831,7 @@ snapshots:
   '@biomejs/cli-win32-x64@2.5.3':
     optional: true
 
-  '@edgeproc/avow@0.1.0':
+  '@edgeproc/avow@0.1.1':
     dependencies:
       '@noble/ed25519': 3.1.0
       canonicalize: 3.0.0

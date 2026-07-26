@@ -3,7 +3,9 @@ import {
   contentHash,
   publicKeyHex,
   ReplayMismatch,
+  SignatureBytesInvalid,
   SignatureInvalid,
+  SignerMismatch,
   verifySignature,
 } from "@edgeproc/avow";
 import { describe, expect, it } from "vitest";
@@ -25,16 +27,22 @@ const REDACTED = "Pay [NAME_1] from account [ACCOUNT_1].";
 const RAW_PII = "Ada Lovelace, account 021000021";
 
 /**
- * `SignatureInvalid` covers TWO different failures, and a test that asserts only
- * the class cannot tell them apart:
+ * `SignatureInvalid` covers TWO security-distinct failures, and a test that
+ * asserts only the base class cannot tell them apart:
  *
- *   1. the embedded `public_key` is not the pinned signer — a plain string
- *      comparison that short-circuits BEFORE any cryptography runs, and
- *   2. the Ed25519 signature bytes do not verify — the actual curve check.
+ *   1. PROVENANCE — the embedded `public_key` is not the pinned signer: a plain
+ *      string comparison that short-circuits BEFORE any cryptography runs.
+ *      `@edgeproc/avow` >=0.1.1 raises `SignerMismatch`, code
+ *      `avow.signer_mismatch`.
+ *   2. TAMPER — the Ed25519 signature bytes do not verify: the actual curve
+ *      check. `@edgeproc/avow` >=0.1.1 raises `SignatureBytesInvalid`, which
+ *      keeps the published `avow.signature_invalid` code.
  *
- * Asserting the class alone means a garbage pinned key rejects byte-identically
- * to a forged signature, so the ed25519 verification is never exercised at all.
- * These messages are what separate the two paths, so each is pinned by name.
+ * Both still extend `SignatureInvalid`, so "did not verify, for any reason"
+ * stays catchable at the base. Asserting only that base means a garbage pinned
+ * key rejects indistinguishably from a forged signature, and the ed25519
+ * verification is never exercised at all — so each path is pinned by its own
+ * subclass, its own code, AND its own message.
  */
 const PINNED_KEY_MISMATCH = "receipt public key is not the expected signer";
 const SIGNATURE_MISMATCH = "signature does not match payload";
@@ -139,16 +147,20 @@ describe("egress receipt (signed, pinned-key verifiable)", () => {
     ).rejects.toThrow(ReplayMismatch);
   });
 
-  it("rejects a receipt under a wrong pinned key, naming the KEY as the cause", async () => {
+  it("rejects a receipt under a wrong pinned key as a coded SignerMismatch", async () => {
     const receipt = await sealEgressReceipt(
       { provider: "openrouter", redactedText: REDACTED, decision: "allow" },
       SEED_HEX,
     );
     const error = await rejectionOf(verifySignature(receipt, WRONG_KEY));
+    // A wrong-signer rejection is a PROVENANCE failure and says so in its code,
+    // so an auditor can alert on "signed by an untrusted key" without parsing a
+    // message. It stays catchable as the published base.
+    expect(error).toBeInstanceOf(SignerMismatch);
     expect(error).toBeInstanceOf(SignatureInvalid);
-    expect(error.code).toBe("avow.signature_invalid");
+    expect(error.code).toBe("avow.signer_mismatch");
     // The key-pinning short-circuit, NOT the curve check — that distinction is
-    // the whole point, and only the message carries it.
+    // the whole point, so the message is pinned alongside the code.
     expect(error.message).toBe(PINNED_KEY_MISMATCH);
   });
 
@@ -173,7 +185,12 @@ describe("egress receipt (signed, pinned-key verifiable)", () => {
     // guards pass. Only the curve verification can reject this receipt.
     expect(forged.public_key).toBe(pinned);
     const error = await rejectionOf(verifySignature(forged, pinned));
+    // A TAMPER failure, NOT a provenance one: the pinned signer matched, so
+    // this must never read as a SignerMismatch. It keeps the published
+    // `avow.signature_invalid` code this case has always carried.
+    expect(error).toBeInstanceOf(SignatureBytesInvalid);
     expect(error).toBeInstanceOf(SignatureInvalid);
+    expect(error).not.toBeInstanceOf(SignerMismatch);
     expect(error.code).toBe("avow.signature_invalid");
     expect(error.message).toBe(SIGNATURE_MISMATCH);
   });

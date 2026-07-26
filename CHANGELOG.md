@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`@edgeproc/avow` 0.1.0 → 0.1.1**, which splits a failed verification into two
+  security-distinct subclasses of the published `SignatureInvalid` base:
+  `SignerMismatch` (`avow.signer_mismatch`) when the receipt's embedded key is
+  not the pinned signer — a *provenance* failure caught before any cryptography
+  runs — and `SignatureBytesInvalid` (which keeps `avow.signature_invalid`) when
+  the Ed25519 check rejects the bytes — a *tamper* failure. Purely additive: a
+  caller catching `SignatureInvalid` still catches both. No public API change to
+  this package; `verifySignature` is re-exported from `@edgeproc/avow` unchanged.
+  The receipt tests now assert each cause by its own subclass, code, and message,
+  so a wrong-signer rejection can no longer pass as a forged-signature rejection.
+
 ## [0.2.2] — 2026-07-25
 
 Hardening release, and the first cut published with npm build **provenance** — a
