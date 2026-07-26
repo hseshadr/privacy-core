@@ -177,21 +177,24 @@ describe("OpenRouterProvider", () => {
       "a non-string content",
       JSON.stringify({ choices: [{ message: { content: 42 } }] }),
     ],
-  ])("fails closed with MalformedProviderResponseError on %s", async (_label, body) => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(body, {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    const payload = approve(
-      await redactForEgress("hello", new Vault()),
-      () => {},
-    );
-    await expect(
-      new OpenRouterProvider(cfg).complete(payload),
-    ).rejects.toBeInstanceOf(MalformedProviderResponseError);
-  });
+  ])(
+    "fails closed with MalformedProviderResponseError on %s",
+    async (_label, body) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const payload = approve(
+        await redactForEgress("hello", new Vault()),
+        () => {},
+      );
+      await expect(
+        new OpenRouterProvider(cfg).complete(payload),
+      ).rejects.toBeInstanceOf(MalformedProviderResponseError);
+    },
+  );
 
   it("returns an empty-string content verbatim (a valid, if empty, reply)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
