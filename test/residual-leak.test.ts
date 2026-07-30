@@ -66,10 +66,15 @@ describe("residual guard — confirmed leaks still REFUSE", () => {
       "duplicate account, standalone copy",
       "Account number: 021000021 021000021",
     ],
-    // Second copy is the bare value, sentence-delimited.
+    // Second copy is the bare value, sentence-delimited. This account number is
+    // TEN digits on purpose: the bare-digit SSN recognizer matches exactly nine,
+    // so the restated copy stays label-only-detectable and the residual scenario
+    // this row exists to prove is still reachable. (The nine-digit form of this
+    // case now redacts BOTH copies instead of refusing — pinned separately in
+    // "restated SSN-shaped account number" below.)
     [
       "account restated later in the sentence",
-      "Account number: 123456789. Please confirm 123456789 is correct.",
+      "Account number: 1234567890. Please confirm 1234567890 is correct.",
     ],
     // Second copy is the bare routing number, space-delimited.
     [
@@ -92,6 +97,22 @@ describe("residual guard — confirmed leaks still REFUSE", () => {
       );
     });
   }
+
+  /**
+   * The outcome that got STRONGER when the detector learned the unseparated SSN
+   * form. Previously only the labelled copy was recognised, the bare restatement
+   * survived, and the residual guard refused the whole redaction (correct, but
+   * the user got nothing). Now both copies are redacted, so there is no residual
+   * to refuse. Refusing is the fallback; redacting is the win — assert the
+   * stronger property directly rather than let the weaker one silently lapse.
+   */
+  it("redacts BOTH copies of a restated SSN-shaped account number", async () => {
+    const input = "Account number: 123456789. Please confirm 123456789.";
+    const pending = await redactForEgress(input, new Vault());
+    const wire = approve(pending, () => {}).redactedText;
+    expect(wire).not.toContain("123456789");
+    expect(wire).toContain("[ACCOUNT_1]");
+  });
 });
 
 /**
