@@ -16,6 +16,22 @@ export function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+/**
+ * SSA issuance rules for a US SSN candidate (separators are stripped first).
+ *
+ * Area `000`, `666` and `900-999`, group `00`, and serial `0000` were never
+ * issued. Requiring a structurally issuable number is what makes the *unseparated*
+ * `123456789` form safe to recognize: it rejects the bare 9-digit runs that are
+ * something else, most usefully ABA routing numbers (`021000021` — group `00`).
+ */
+export function ssnValid(raw: string): boolean {
+  const d = raw.replace(/\D/g, "");
+  if (d.length !== 9) return false;
+  const area = d.slice(0, 3);
+  if (area === "000" || area === "666" || area.startsWith("9")) return false;
+  return d.slice(3, 5) !== "00" && d.slice(5) !== "0000";
+}
+
 /** Compute n mod 97 over a decimal string too large for Number. */
 function mod97(numeric: string): number {
   let remainder = 0;

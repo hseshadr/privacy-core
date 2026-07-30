@@ -26,13 +26,96 @@ const RAW_VALUES = [
   "$1,482.10",
 ];
 
+/**
+ * The formats a Node test with a spied `fetch` cannot vouch for.
+ *
+ * Unicode property escapes and `u`-flag regex semantics are engine-level
+ * behaviour, and V8-in-Node is not the same execution path as V8-in-Chromium
+ * (different source decoding, different ICU/locale wiring). These cases are
+ * re-proved HERE, in a real browser, against the bytes the app actually puts on
+ * the wire.
+ *
+ * `fragments` carries the lesson the unit suite learned the hard way: an
+ * ASCII-only recognizer reduces `josé.álvarez@example.com` to `josé.á[EMAIL_1]`,
+ * so a whole-value absence check ALONE would score a partial leak as a pass.
+ */
+const NEWLY_COVERED: ReadonlyArray<{
+  readonly raw: string;
+  readonly fragments: readonly string[];
+}> = [
+  { raw: "223456789", fragments: ["223456789"] }, // undashed SSN
+  { raw: "234 56 7890", fragments: ["234 56 7890"] }, // space-separated SSN
+  {
+    raw: "josé.álvarez@example.com", // non-ASCII local part
+    fragments: ["josé", "álvarez"],
+  },
+  {
+    raw: "kontakt@münchen-bank.example", // IDN domain
+    fragments: ["kontakt", "münchen-bank"],
+  },
+  { raw: "415-555-0148", fragments: ["415-555-0148", "555-0148"] }, // hyphenated
+  { raw: "212.555.0187", fragments: ["212.555.0187", "555.0187"] }, // dotted
+  { raw: "+1 646 555 0143", fragments: ["646 555 0143", "555 0143"] }, // +1
+];
+
+/** Every raw value and identifying fragment that must never cross the wire. */
+const ALL_LEAKS = [
+  ...RAW_VALUES,
+  ...NEWLY_COVERED.flatMap((c) => [c.raw, ...c.fragments]),
+];
+
+/**
+ * The NON-VACUITY half. Every "raw value is absent" assertion would pass
+ * trivially on a fixture that simply did not contain these formats, so the wire
+ * is REQUIRED to carry the placeholders the widened recognizers must mint: a
+ * second SSN, a second and third EMAIL, and three more PHONEs.
+ */
+const REQUIRED_TOKENS = [
+  "[SSN_2]",
+  "[SSN_3]",
+  "[EMAIL_2]",
+  "[EMAIL_3]",
+  "[PHONE_2]",
+  "[PHONE_3]",
+  "[PHONE_4]",
+];
+
 const SUCCESS_TEXT =
   "Done. The provider only saw placeholders; real values were restored locally.";
+
+/**
+ * Confirm we are driving THIS demo before asserting anything about it.
+ *
+ * `reuseExistingServer` adopts whatever is already listening on :5173. When that
+ * turned out to be an unrelated project's dev server, every locator missed and
+ * the failure read as "element(s) not found" — a confusing message for a
+ * wrong-server problem. A named check turns that into an obvious one. (The
+ * QUICKSTART documents the port collision; this makes the suite say so too.)
+ */
+async function assertDemoIsMounted(page: import("@playwright/test").Page) {
+  await expect(
+    page.locator("h1"),
+    "the server on :5173 is not the privacy-core demo — stop the other one (lsof -ti tcp:5173)",
+  ).toHaveText("EdgeProc Privacy Core");
+}
 
 test("redact → send → rehydrate: only placeholders cross the wire", async ({
   page,
 }) => {
   let wireBody = "";
+
+  // A clean console is part of "it works". Anything the detector path logs —
+  // a regex construction failure under a different engine would surface here —
+  // fails the test rather than scrolling past.
+  const consoleProblems: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      consoleProblems.push(`${msg.type()}: ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) =>
+    consoleProblems.push(`pageerror: ${err.message}`),
+  );
 
   // Register the interceptor BEFORE goto so it catches the send. The canned
   // OpenAI-compatible reply echoes placeholders so local rehydration has
@@ -43,7 +126,11 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
     // NETWORK-BOUNDARY PROOF: placeholders present, raw PII absent.
     expect(wireBody).toContain("[NAME_1]");
     expect(wireBody).toContain("[CARD_1]");
-    for (const raw of RAW_VALUES) {
+    // Non-vacuity: the widened recognizers actually fired in Chromium.
+    for (const token of REQUIRED_TOKENS) {
+      expect(wireBody, `expected ${token} on the wire`).toContain(token);
+    }
+    for (const raw of ALL_LEAKS) {
       expect(wireBody, `raw value leaked on the wire: ${raw}`).not.toContain(
         raw,
       );
@@ -66,13 +153,23 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
   });
 
   await page.goto("/");
+  await assertDemoIsMounted(page);
 
-  // Pre-send proof: the rendered wire payload already shows placeholders and
+  // Pre-send proof, in the RENDERED DOM: the wire pane is the user's view of
+  // "exactly what leaves the device", so it must already show placeholders and
   // none of the raw values.
+  //
+  // Scoped to #wire deliberately. The redaction-set pane (#set) shows each raw
+  // value beside its token ON PURPOSE — that is the review UI, and the whole
+  // design depends on the user seeing what is about to be swapped out. Asserting
+  // raw values are absent page-wide would be asserting the review UI is broken.
   const wire = page.locator("#wire");
   await expect(wire).toContainText("[NAME_1]");
   await expect(wire).toContainText("[CARD_1]");
-  for (const raw of RAW_VALUES) {
+  for (const token of REQUIRED_TOKENS) {
+    await expect(wire).toContainText(token);
+  }
+  for (const raw of ALL_LEAKS) {
     await expect(wire).not.toContainText(raw);
   }
 
@@ -91,6 +188,9 @@ test("redact → send → rehydrate: only placeholders cross the wire", async ({
   const answer = page.locator("#answer");
   await expect(answer).toContainText("Ada Lovelace");
   await expect(answer).toContainText("$1,482.10");
+
+  // Clean console for the whole flow — no errors, no warnings.
+  expect(consoleProblems, consoleProblems.join("\n")).toEqual([]);
 
   // Write to the gitignored artifacts dir so test runs never churn the tree.
   // The committed README hero (docs/demo.png) is a stable, decoupled snapshot.
@@ -115,6 +215,7 @@ test("egress receipts + fail-closed refusal are demonstrable in the demo", async
   });
 
   await page.goto("/");
+  await assertDemoIsMounted(page);
 
   // Turn ON receipt signing so every guard decision is sealed.
   await page.locator("#receipts-toggle").check();

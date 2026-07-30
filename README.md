@@ -10,6 +10,11 @@ device**, swaps each one for a label like `[CARD_1]`, and sends only the
 labeled version to the model. When the answer comes back, it puts your real
 values back in, locally. The model helps you. The model never sees you.
 
+"The private bits" means a specific, listed set of things — cards, emails,
+phone numbers, SSNs, IBANs, amounts, dates. [What it recognizes,
+exactly](#what-it-recognizes-exactly) is the full list, and the review step
+below is what covers everything outside it.
+
 Here is the whole idea. Say you paste this:
 
 ```text
@@ -143,19 +148,47 @@ To prove it without a browser window, `pnpm test:e2e` drives the same loop in
 real Chromium, intercepts the outbound request, and fails if any real value
 appears in it.
 
+## What it recognizes, exactly
+
+Detection is a fixed ruleset, so the honest version of "it finds the private
+bits" is a list. This is the whole of it. If a format is not in the left column,
+it is not detected, and the review step is what catches it.
+
+| Type | Recognized | Not recognized |
+| --- | --- | --- |
+| `EMAIL` | any script, on both sides of the `@` — `ada@example.com`, `josé.álvarez@example.com`, `kontakt@münchen-bank.example` | a domain with no dot (`user@localhost`) |
+| `SSN` | `123-45-6789`, `123 45 6789`, and unseparated `123456789` — all gated on the SSA issuance rules (area not `000`/`666`/`9xx`, group not `00`, serial not `0000`) | a 9-digit run that could never have been issued — which is how routing numbers stay routing numbers |
+| `PHONE` | US/NANP with `-`, `.` or space separators, optional parentheses, optional `+1`: `(415) 555-0132`, `415-555-0132`, `212.555.0187`, `+1 646 555 0143` | an unformatted `4155550132`, a 7-digit local number, non-NANP international |
+| `CARD` | 13–19 digits, spaced or hyphenated, **Luhn-valid** | runs that fail Luhn (deliberately — they are not card numbers) |
+| `IBAN` | grouped or compact, **mod-97-valid** | other bank identifiers (SWIFT/BIC, UK sort codes) |
+| `ROUTING` | `Routing number: 021000021` — the English label is required | a bare routing number, which is not distinguishable from any other 9-digit run |
+| `ACCOUNT` | `Account number: 000123456789` — the English label is required | a bare account number |
+| `AMOUNT` | `$1,482.10` | other currencies |
+| `DATE` | `01/14/2026` | every other date format |
+| `NAME` | three demo names (`Ada Lovelace`, `Grace Hopper`, `Alan Turing`) | **every other name** — general name detection is not shipped |
+| `MERCHANT` | five demo merchants (Whole Foods, Starbucks, Amazon, Walmart, Costco) | every other merchant |
+
+The **Recognized** column is proved at the wire, not at the detector:
+[`test/detector-completeness.test.ts`](test/detector-completeness.test.ts) drives
+each format through the real send path and fails if the value — or an
+identifying fragment of it — reaches the network. The limits that are easiest to
+widen by accident (`4155550132`, phone-shaped reference numbers, 9-digit runs
+that are not issuable SSNs) are pinned as tests too, so quietly broadening a rule
+turns them red.
+
 ## What this does not protect you from
 
 Read this before you trust it with anything that matters. Over-claiming privacy
 is worse than claiming none.
 
-- **It only hides what it recognizes.** Detection is a fixed ruleset — patterns
-  plus checksums (card numbers are Luhn-checked, IBANs mod-97-checked) plus small
-  dictionaries. It will miss an oddly formatted account number, an unusual name,
-  a kind of private data nobody wrote a rule for. The built-in name list is three
-  demo names; general name detection is not shipped. **That is why you review the
-  outgoing text before it goes.** A human catching a miss is the actual
-  guarantee; the tool's job is to make the text you're about to send visible and
-  approvable, not to promise it caught everything.
+- **It only hides what it recognizes**, and that set is exactly the table above —
+  patterns plus checksums plus two small dictionaries. It will miss an oddly
+  formatted account number, an unusual name, a kind of private data nobody wrote
+  a rule for. The built-in name list is three demo names; general name detection
+  is not shipped. **That is why you review the outgoing text before it goes.** A
+  human catching a miss is the actual guarantee; the tool's job is to make the
+  text you're about to send visible and approvable, not to promise it caught
+  everything.
 
 - **Redaction input is bounded.** `redactForEgress` accepts at most 512 KiB of
   UTF-8 text (`MAX_REDACTION_INPUT_BYTES`). Larger input fails closed with

@@ -7,7 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The detector no longer leaks three ordinary formats of the PII it advertises.**
+  Each was a real leak, reproduced as a failing test that drove the value through
+  the actual send path before any fix landed.
+  - **Email now matches every script.** JavaScript's `\w` and `\b` are ASCII-only,
+    so `josé.álvarez@example.com` matched only its ASCII tail and was redacted as
+    `josé.á[EMAIL_1]` — a silent PARTIAL leak that a whole-value absence check
+    would have scored a pass. The recognizer now uses Unicode property escapes
+    under the `u` flag on both sides of the `@`, so IDN domains match too. Edges
+    are asserted explicitly (a lookbehind, and a trailing alphanumeric) since `\b`
+    could not do the job; every quantifier stays un-nested, so the pattern is
+    linear and a ReDoS test pins that.
+  - **SSN now matches `123 45 6789` and unseparated `123456789`**, not only the
+    dashed form. All three are gated on the SSA issuance rules (new `ssnValid`:
+    area not `000`/`666`/`9xx`, group not `00`, serial not `0000`), which is what
+    makes a bare 9-digit run safe to recognize — group `00` is never issued, so
+    ABA routing numbers are excluded by construction.
+  - **Phone now matches the NANP set**, not only `(415) 555-0132`: `-`, `.` or
+    space separators, optional parentheses, optional `+1`. Area and exchange must
+    start `2-9`. An unformatted 10-digit run is still deliberately NOT matched.
+
 ### Changed
+
+- **The browser e2e now proves the widened formats in real Chromium.**
+  `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
+  newly-covered format, and the Playwright suite asserts each raw value *and its
+  identifying fragments* are absent from both the intercepted request body and
+  the rendered wire pane, requires the placeholders those recognizers must mint
+  (non-vacuity), and fails on any console error or warning during the flow. A
+  Node test with a spied `fetch` cannot vouch for `u`-flag regex semantics under
+  a different engine; this can. The suite also asserts the demo actually mounted,
+  so an unrelated dev server squatting port 5173 fails with a named error instead
+  of a bare "element(s) not found".
+- **`RULES` order is now the documented tie-break** for overlapping spans of equal
+  length at the same offset (`Array.prototype.sort` has been stable since ES2019).
+  The label-gated `ROUTING`/`ACCOUNT` rules are listed before `SSN`, so
+  `Account number: 100200300` stays an `ACCOUNT` even though those digits are also
+  a structurally valid SSN.
+- **The README now publishes a per-type coverage table** ("What it recognizes,
+  exactly") stating what each recognizer accepts *and* what it does not, and the
+  QUICKSTART, ARCHITECTURE TL;DR and `detect()` docstring point at it instead of
+  implying the detector finds all PII.
 
 - **`@edgeproc/avow` 0.1.0 → 0.1.1**, which splits a failed verification into two
   security-distinct subclasses of the published `SignatureInvalid` base:

@@ -31,7 +31,14 @@ function regexSpans(text: string, rule: Rule): Span[] {
   return out;
 }
 
-/** Drop overlapping spans (earlier/longer wins), keeping a sorted, disjoint set. */
+/**
+ * Drop overlapping spans (earlier/longer wins), keeping a sorted, disjoint set.
+ *
+ * `Array.prototype.sort` is stable (ES2019), so spans that tie on both offset
+ * and length keep their input order — which is `RULES` order. That is the
+ * documented priority channel: a label-gated ACCOUNT span beats the bare-digit
+ * SSN span covering the same characters because ACCOUNT is listed first.
+ */
 function dropOverlaps(spans: readonly Span[]): Span[] {
   const sorted = [...spans].sort(
     (a, b) => a.start - b.start || b.end - b.start - (a.end - a.start),
@@ -48,13 +55,16 @@ function dropOverlaps(spans: readonly Span[]): Span[] {
 }
 
 /**
- * Detect all PII spans deterministically: structured patterns + checksums plus
- * the finance/name dictionaries. Overlaps are dropped; the result is sorted by
- * start offset and non-overlapping.
+ * Detect PII spans deterministically from the FIXED ruleset in `patterns.ts`:
+ * structured patterns, checksum/issuance validators, and the finance/name
+ * dictionaries. Overlaps are dropped; the result is sorted by start offset and
+ * non-overlapping.
  *
- * Recall is the product: anything not matched here leaks unless a human catches
- * it in the preview. The contextual NER tier that would widen recall is
- * deliberately deferred (see Roadmap).
+ * This is not "all PII" — it is exactly what `RULES`, `MERCHANTS` and `NAMES`
+ * cover, published as a coverage table in the README. Recall is the product:
+ * anything not matched here leaks unless a human catches it in the preview. The
+ * contextual NER tier that would widen recall is deliberately deferred (see
+ * Roadmap).
  */
 export function detect(text: string): Span[] {
   const all = [
