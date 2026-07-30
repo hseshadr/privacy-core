@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The browser e2e now proves the widened formats in real Chromium.**
+  `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
+  newly-covered format, and the Playwright suite asserts each raw value *and its
+  identifying fragments* are absent from both the intercepted request body and
+  the rendered wire pane, requires the placeholders those recognizers must mint
+  (non-vacuity), and fails on any console error or warning during the flow. A
+  Node test with a spied `fetch` cannot vouch for `u`-flag regex semantics under
+  a different engine; this can. The suite also asserts the demo actually mounted,
+  so an unrelated dev server squatting port 5173 fails with a named error instead
+  of a bare "element(s) not found".
 - **`RULES` order is now the documented tie-break** for overlapping spans of equal
   length at the same offset (`Array.prototype.sort` has been stable since ES2019).
   The label-gated `ROUTING`/`ACCOUNT` rules are listed before `SSN`, so

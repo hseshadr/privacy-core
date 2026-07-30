@@ -18,6 +18,20 @@ const RAW_PII = [
   "$1,482.10",
   "Ada Lovelace",
   "Whole Foods",
+  // The formats added to the fixture for the browser e2e, kept in lockstep here
+  // so a regression trips the fast unit gate too, not only Playwright.
+  "223456789",
+  "234 56 7890",
+  "josé.álvarez@example.com",
+  "kontakt@münchen-bank.example",
+  "415-555-0148",
+  "212.555.0187",
+  "+1 646 555 0143",
+  // Identifying fragments — a PARTIAL redaction must not pass as a clean send.
+  "josé",
+  "álvarez",
+  "kontakt",
+  "münchen-bank",
 ];
 
 afterEach(() => vi.restoreAllMocks());
