@@ -186,8 +186,16 @@ describe("the widened recognizers do not over-match", () => {
     }
   });
 
-  it("does not read dotted decimals or version strings as phone numbers", () => {
-    for (const text of ["Host 192.168.1.100", "Build 10.2.4 shipped"]) {
+  it("does not read phone-SHAPED reference numbers as phone numbers", () => {
+    // These are the cases that discriminate the NANP `2-9` area/exchange rule:
+    // each is exactly 3-3-4 with real separators, so a recognizer without that
+    // rule matches all of them. Dropping `[2-9]` must turn this test red.
+    for (const text of [
+      "Part 100.200.3000 in stock",
+      "Ref 011-022-0333 filed",
+      "Host 192.168.1.100",
+      "Build 10.2.4 shipped",
+    ]) {
       expect(typesOf(text, "PHONE"), text).toEqual([]);
     }
   });

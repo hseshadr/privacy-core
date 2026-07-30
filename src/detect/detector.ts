@@ -55,13 +55,16 @@ function dropOverlaps(spans: readonly Span[]): Span[] {
 }
 
 /**
- * Detect all PII spans deterministically: structured patterns + checksums plus
- * the finance/name dictionaries. Overlaps are dropped; the result is sorted by
- * start offset and non-overlapping.
+ * Detect PII spans deterministically from the FIXED ruleset in `patterns.ts`:
+ * structured patterns, checksum/issuance validators, and the finance/name
+ * dictionaries. Overlaps are dropped; the result is sorted by start offset and
+ * non-overlapping.
  *
- * Recall is the product: anything not matched here leaks unless a human catches
- * it in the preview. The contextual NER tier that would widen recall is
- * deliberately deferred (see Roadmap).
+ * This is not "all PII" — it is exactly what `RULES`, `MERCHANTS` and `NAMES`
+ * cover, published as a coverage table in the README. Recall is the product:
+ * anything not matched here leaks unless a human catches it in the preview. The
+ * contextual NER tier that would widen recall is deliberately deferred (see
+ * Roadmap).
  */
 export function detect(text: string): Span[] {
   const all = [

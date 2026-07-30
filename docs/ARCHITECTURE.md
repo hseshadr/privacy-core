@@ -1,9 +1,13 @@
 # Architecture
 
-**TL;DR** — raw private text stays on-device. A deterministic detector finds PII, a
-reversible vault swaps each value for a typed placeholder, and a **type-enforced
-Egress Guard** makes it a *compile error* to hand raw text to an LLM provider. The
-model's reply is rehydrated locally, so real values never cross the wire.
+**TL;DR** — raw private text stays on-device. A deterministic detector finds PII
+from a fixed, published ruleset, a reversible vault swaps each detected value for
+a typed placeholder, and a **type-enforced Egress Guard** makes it a *compile
+error* to hand raw text to an LLM provider. The model's reply is rehydrated
+locally, so detected values never cross the wire. What the ruleset covers — and
+what it deliberately does not — is the
+[coverage table](../README.md#what-it-recognizes-exactly); the human review step
+is what covers the rest.
 
 ![The redact → send → rehydrate loop](diagrams/privacy-loop.svg)
 
@@ -13,8 +17,13 @@ model's reply is rehydrated locally, so real values never cross the wire.
 ## The flow, in one pass
 
 1. **`detect()`** (`src/detect/`) scans the text with deterministic rules: Presidio-style
-   regex patterns, checksum validators (Luhn for cards, mod-97 for IBANs), and
-   finance/name dictionaries. Overlapping spans are dropped (earlier/longer wins).
+   regex patterns, checksum and issuance-rule validators (Luhn for cards, mod-97 for
+   IBANs, SSA rules for SSNs), and finance/name dictionaries. Email and phone
+   recognizers are Unicode- and format-tolerant — see the
+   [coverage table](../README.md#what-it-recognizes-exactly) for the exact set.
+   Overlapping spans are dropped (earlier/longer wins); on an exact tie, `RULES`
+   order decides, which is why the label-gated ROUTING/ACCOUNT rules are listed
+   before the bare-digit SSN rule.
 2. **`redactForEgress()`** (`src/redact.ts`) writes each detected value into the
    **`Vault`** (`src/vault.ts`) and replaces it with a stable typed placeholder —
    `[CARD_1]`, `[NAME_2]`; the same value always gets the same token. It returns a
