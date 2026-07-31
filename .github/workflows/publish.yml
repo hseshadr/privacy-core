@@ -42,7 +42,7 @@ jobs:
     permissions:
       id-token: write # OIDC — npm verifies this against the registered trusted publisher.
       contents: read
-    uses: hseshadr/ci/.github/workflows/ts-publish.yml@b65d9a4579204545723dfc7b836affa5a84ea2ea # ci-v2.0.3
+    uses: hseshadr/ci/.github/workflows/ts-publish.yml@2a575cd193e2e1fc093ccd26821020538e2547b7 # ci-v2.0.3
     with:
       working-directory: "."
       install-args: "--frozen-lockfile --config.dangerously-allow-all-builds=true"
