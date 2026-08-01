@@ -6,7 +6,7 @@
   },
   "type": "module",
   "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
-    "keywords": [
+  "keywords": [
     "pii",
     "pii-redaction",
     "pii-detection",
