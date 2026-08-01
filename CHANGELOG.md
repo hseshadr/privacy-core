@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly") stating what each recognizer accepts *and* what it does not, and the
   QUICKSTART, ARCHITECTURE TL;DR and `detect()` docstring point at it instead of
   implying the detector finds all PII.
+- **The architecture diagram is now an inline mermaid fence**, and the d2 source
+  plus its committed SVG are deleted. d2 emitted a ~4:1 letterbox SVG that GitHub
+  scaled to about 160px tall in its ~1000px column, which made every label
+  unreadable. Mermaid renders legibly, has no generated artifact that can go stale
+  against the code, and diffs in review. Weaker layout control is the accepted
+  trade. The diagrams directory is gone; there is no render step to run.
 
 - **`@edgeproc/avow` 0.1.0 → 0.1.1**, which splits a failed verification into two
   security-distinct subclasses of the published `SignatureInvalid` base:
