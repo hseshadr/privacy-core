@@ -30,7 +30,7 @@ src/            library source — see docs/ARCHITECTURE.md for the 1:1 module m
 test/           Vitest unit tests
 e2e/            Playwright wire-proof (only placeholders cross the wire)
 examples/demo/  runnable Vite demo consuming only the public API
-docs/           ARCHITECTURE.md, QUICKSTART.md, diagrams/ (d2 + rendered svg)
+docs/           ARCHITECTURE.md, QUICKSTART.md (diagrams are inline mermaid — no build step)
 ```
 
 ## Invariants (don't break without updating the docs)

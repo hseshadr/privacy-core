@@ -9,10 +9,22 @@ what it deliberately does not — is the
 [coverage table](../README.md#what-it-recognizes-exactly); the human review step
 is what covers the rest.
 
-![The redact → send → rehydrate loop](diagrams/privacy-loop.svg)
-
-*Diagram source: [`diagrams/privacy-loop.d2`](diagrams/privacy-loop.d2) — render with
-`d2 docs/diagrams/privacy-loop.d2 docs/diagrams/privacy-loop.svg`.*
+```mermaid
+flowchart TD
+    subgraph device["Your device — real values live only here"]
+        raw["Raw text<br/>bank statement, medical note, contract"]
+        redact["redactForEgress()<br/>the vault keeps the real value;<br/>the text gets a placeholder like [CARD_1]"]
+        approve["approve()<br/>you review the proposal and an audit entry is written —<br/>only this step mints a RedactedPayload"]
+        rehydrate["rehydrate()<br/>swaps the placeholders back to real values<br/>and shows you the restored reply"]
+    end
+    subgraph wire["Across the network"]
+        provider["LLM provider<br/>accepts a RedactedPayload and nothing else —<br/>passing a raw string is a compile error, not a runtime check"]
+    end
+    raw --> redact
+    redact --> approve
+    approve -->|"placeholders only"| provider
+    provider -->|"redacted reply"| rehydrate
+```
 
 ## The flow, in one pass
 
