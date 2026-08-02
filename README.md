@@ -1,5 +1,93 @@
 # @edgeproc/privacy-core
 
+Swaps the card numbers, emails and names in a prompt for labels like `[CARD_1]` before it leaves
+your machine, then puts the real values back into the model's reply — locally, from a table the
+model was never shown.
+
+Real output of the 23-line example below, run against the published npm package:
+
+```text
+you write:   Grace Hopper, card 4242 4242 4242 4242, was charged $482.10 at Whole Foods on 01/14/2026.
+goes out:    [NAME_1], card [CARD_1], was charged [AMOUNT_1] at [MERCHANT_1] on [DATE_1].
+model says:  …referenced 5 redacted value(s): [NAME_1], [CARD_1], [AMOUNT_1], [MERCHANT_1], [DATE_1].
+you read:    …referenced 5 redacted value(s): Grace Hopper, 4242 4242 4242 4242, $482.10, Whole Foods, 01/14/2026.
+```
+
+The last two lines are the point. The model wrote `[NAME_1]`; you read *Grace Hopper*. That swap
+happened on your machine, after the network call was over.
+
+Run it — no API key, no account. The 23 lines are in
+[Use it in your own repo](#use-it-in-your-own-repo).
+
+```bash
+npm install @edgeproc/privacy-core && node example.mjs
+```
+
+## Use it in your own repo
+
+You need [Node](https://nodejs.org) 22.13 or newer. Nothing else — no API key, no account, no
+network call. Save this as `example.mjs` in any empty directory:
+
+```js
+import {
+  approve, guardedProvider, NoLLMProvider, redactForEgress, rehydrate, Vault,
+} from "@edgeproc/privacy-core";
+
+const statement =
+  "Grace Hopper, card 4242 4242 4242 4242, was charged $482.10 at Whole Foods on 01/14/2026.";
+
+const vault = new Vault(); // holds your real values, in this process, on this machine
+const audit = (e) => console.log("[audit]", e.kind, e.placeholders);
+
+// 1. REDACT on-device. This is a proposal — no provider will accept it yet.
+const pending = await redactForEgress(statement, vault, audit);
+console.log("leaves your machine:", pending.redactedText);
+
+// 2. APPROVE. You read the line above and say yes; only this mints a sendable payload.
+const payload = approve(pending, audit);
+
+// 3. SEND. NoLLMProvider is the built-in offline stand-in — no API key, no network.
+const reply = await guardedProvider(new NoLLMProvider()).complete(payload);
+console.log("model replied:", reply.redactedText);
+
+// 4. REHYDRATE locally, bound to the vault the text was redacted with.
+console.log("you read:", rehydrate(reply.redactedText, vault, payload.vaultRef));
+```
+
+Then:
+
+```bash
+npm install @edgeproc/privacy-core && node example.mjs
+```
+
+That prints, verbatim:
+
+```text
+[audit] redact [ '[NAME_1]', '[CARD_1]', '[AMOUNT_1]', '[MERCHANT_1]', '[DATE_1]' ]
+leaves your machine: [NAME_1], card [CARD_1], was charged [AMOUNT_1] at [MERCHANT_1] on [DATE_1].
+[audit] approve [ '[NAME_1]', '[CARD_1]', '[AMOUNT_1]', '[MERCHANT_1]', '[DATE_1]' ]
+model replied: Summary (offline echo — no API key set):
+I reviewed your statement. It referenced 5 redacted value(s): [NAME_1], [CARD_1], [AMOUNT_1], [MERCHANT_1], [DATE_1].
+The first flagged value, [NAME_1], is the one to check.
+(Set OPENROUTER_API_KEY + VITE_USE_OPENROUTER=1 to call a real model via the dev proxy.)
+you read: Summary (offline echo — no API key set):
+I reviewed your statement. It referenced 5 redacted value(s): Grace Hopper, 4242 4242 4242 4242, $482.10, Whole Foods, 01/14/2026.
+The first flagged value, Grace Hopper, is the one to check.
+(Set OPENROUTER_API_KEY + VITE_USE_OPENROUTER=1 to call a real model via the dev proxy.)
+```
+
+Step 2 is the one people skip. `redactForEgress` returns a *proposal*, not something you can send.
+Nothing becomes sendable until `approve()` — and that holds even when the detector finds nothing,
+because "found nothing" is not the same as "someone said yes". Provider adapters accept only the
+type `approve()` mints, so passing one a raw string is
+[a compile error](#the-part-that-makes-leaking-a-compile-error), not a code-review comment.
+
+To swap the offline stand-in for a real model, see
+[Calling a real model](#calling-a-real-model). For a signed record of every allow and deny, see
+[Receipts](#receipts-a-record-of-what-was-allowed-and-what-was-blocked).
+
+## Why this exists
+
 You get a letter from a doctor, or a bank statement with a charge you don't
 recognize, and you want an AI chatbot to explain it. So you paste the whole
 thing in — your name, your phone number, your card number, all of it — because
@@ -12,122 +100,14 @@ values back in, locally. The model helps you. The model never sees you.
 
 "The private bits" means a specific, listed set of things — cards, emails,
 phone numbers, SSNs, IBANs, amounts, dates. [What it recognizes,
-exactly](#what-it-recognizes-exactly) is the full list, and the review step
-below is what covers everything outside it.
+exactly](#what-it-recognizes-exactly) is the full list, and the review step is
+what covers everything outside it.
 
-Here is the whole idea. Say you paste this:
-
-```text
-I want to dispute a charge on my card.
-Account holder: Grace Hopper
-Email: grace.hopper@example.com
-Phone: (415) 555-0132
-Card on file: 4242 4242 4242 4242
-On 01/14/2026 I was charged $482.10 at Whole Foods and I was never there.
-```
-
-This is what actually leaves your device:
-
-```text
-I want to dispute a charge on my card.
-Account holder: [NAME_1]
-Email: [EMAIL_1]
-Phone: [PHONE_1]
-Card on file: [CARD_1]
-On [DATE_1] I was charged [AMOUNT_1] at [MERCHANT_1] and I was never there.
-```
-
-The model writes its reply about `[NAME_1]` and `[CARD_1]`. Before you read it,
-the library swaps the real values back in — on your machine, from a table the
-model was never shown. You see a normal answer about Grace Hopper's card.
-
-Three words you'll see below, defined once:
+Three words used throughout, defined once:
 
 - **redact** — replace a private value with a label.
 - **rehydrate** — put the real value back when the answer returns.
 - **egress** — anything leaving your device for the network.
-
-## Run it yourself in one minute
-
-You need [Node](https://nodejs.org) 22.13 or newer. No API key, no account —
-the loop runs against a built-in offline stand-in model.
-
-```bash
-mkdir privacy-try && cd privacy-try
-npm init -y && npm pkg set type=module
-npm install @edgeproc/privacy-core
-```
-
-Save this as `try-it.mjs`:
-
-```js
-import {
-  approve,
-  makeProvider,
-  redactForEgress,
-  rehydrate,
-  Vault,
-} from "@edgeproc/privacy-core";
-
-// The thing you'd normally paste straight into a chatbot.
-const statement = `I want to dispute a charge on my card.
-Account holder: Grace Hopper
-Email: grace.hopper@example.com
-Phone: (415) 555-0132
-Card on file: 4242 4242 4242 4242
-On 01/14/2026 I was charged $482.10 at Whole Foods and I was never there.`;
-
-// The vault holds your real values. It lives in this process, on this machine.
-const vault = new Vault();
-
-// 1. REDACT — swap every detected value for a label.
-const pending = await redactForEgress(statement, vault);
-console.log("--- what would leave your device ---");
-console.log(pending.redactedText);
-
-// 2. APPROVE — you read the above and say yes. Nothing is sendable until you do.
-const payload = approve(pending, (entry) => console.log("\n[audit]", entry.kind));
-
-// 3. SEND — with no API key, this uses a built-in offline stand-in model.
-const { provider, label } = makeProvider();
-const reply = await provider.complete(payload);
-console.log(`\n--- reply from ${label} — it only ever saw the text above ---`);
-console.log(reply.redactedText);
-
-// 4. REHYDRATE — put your real values back, locally.
-console.log("\n--- what you actually read ---");
-console.log(rehydrate(reply.redactedText, vault, payload.vaultRef));
-```
-
-Then `node try-it.mjs`. You get:
-
-```text
---- what would leave your device ---
-I want to dispute a charge on my card.
-Account holder: [NAME_1]
-Email: [EMAIL_1]
-Phone: [PHONE_1]
-Card on file: [CARD_1]
-On [DATE_1] I was charged [AMOUNT_1] at [MERCHANT_1] and I was never there.
-
-[audit] approve
-
---- reply from NoLLMProvider (offline echo) — it only ever saw the text above ---
-Summary (offline echo — no API key set):
-I reviewed your statement. It referenced 7 redacted value(s): [NAME_1], [EMAIL_1], [PHONE_1], [CARD_1], [DATE_1], [AMOUNT_1], [MERCHANT_1].
-The first flagged value, [NAME_1], is the one to check.
-(Set OPENROUTER_API_KEY + VITE_USE_OPENROUTER=1 to call a real model via the dev proxy.)
-
---- what you actually read ---
-Summary (offline echo — no API key set):
-I reviewed your statement. It referenced 7 redacted value(s): Grace Hopper, grace.hopper@example.com, (415) 555-0132, 4242 4242 4242 4242, 01/14/2026, $482.10, Whole Foods.
-The first flagged value, Grace Hopper, is the one to check.
-(Set OPENROUTER_API_KEY + VITE_USE_OPENROUTER=1 to call a real model via the dev proxy.)
-```
-
-The last two blocks are the point: the model's reply mentions `[NAME_1]`, and
-what you read says *Grace Hopper*. That substitution happened on your machine,
-after the network call was over.
 
 ## See it in a browser
 

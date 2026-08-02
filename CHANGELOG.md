@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The README front door is now one sentence, one proof, one command.** The
+  first screenful states what the library does, shows the real before/after of
+  the example that follows, and gives the single command that runs it. A new
+  "Use it in your own repo" section replaces the old walkthrough with a 23-line
+  example that was run against `@edgeproc/privacy-core@0.2.2` installed from
+  npm in an empty directory — the pasted output is that run's stdout, byte for
+  byte. Everything else (the recognized-formats table, the limits, receipts,
+  the developer sections) moved below the fold unchanged.
 - **The browser e2e now proves the widened formats in real Chromium.**
   `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
   newly-covered format, and the Playwright suite asserts each raw value *and its
