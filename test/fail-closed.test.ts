@@ -11,6 +11,14 @@ import {
 } from "../src/index.js";
 
 describe("fail-closed reversibility", () => {
+  it("the cap is 512 KiB — the promised number, not merely its own value", () => {
+    // Every other assertion below is written RELATIVE to the constant, so
+    // multiplying it by 1000 would just make them build a bigger string and
+    // still pass: the CHECK would stay guarded while the BOUND silently moved.
+    // The README promises "at most 512 KiB", so pin that literal here.
+    expect(MAX_REDACTION_INPUT_BYTES).toBe(512 * 1024);
+  });
+
   it("rejects input over the UTF-8 byte cap before vault or audit work", async () => {
     const audit = vi.fn();
     const raw = "x".repeat(MAX_REDACTION_INPUT_BYTES + 1);
@@ -31,6 +39,20 @@ describe("fail-closed reversibility", () => {
 
   it("counts UTF-8 bytes rather than JavaScript UTF-16 code units", async () => {
     const raw = "😀".repeat(Math.floor(MAX_REDACTION_INPUT_BYTES / 2) + 1);
+
+    await expect(redactForEgress(raw, new Vault())).rejects.toThrow(
+      InputTooLargeError,
+    );
+  });
+
+  it("rejects 3-byte text that is UNDER the cap counted in UTF-16 code units", async () => {
+    // "あ" is one UTF-16 code unit but three UTF-8 bytes, so this string is
+    // under the cap by JavaScript's `.length` and over it in real bytes. The
+    // cheap pre-check that skips the exact encode is only sound while its
+    // bytes-per-code-unit factor stays at 3, the true UTF-8 maximum; drop it
+    // to 1 or 2 and this input sails straight past the cap.
+    const raw = "あ".repeat(Math.floor(MAX_REDACTION_INPUT_BYTES / 3) + 1);
+    expect(raw.length).toBeLessThan(MAX_REDACTION_INPUT_BYTES);
 
     await expect(redactForEgress(raw, new Vault())).rejects.toThrow(
       InputTooLargeError,
