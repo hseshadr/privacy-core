@@ -19,5 +19,8 @@ onlyBuiltDependencies:
 # Force the transitive dev-only postcss (pulled in via vitest -> vite) to the
 # patched line for GHSA-r28c-9q8g-f849 (path traversal in source-map auto-load,
 # fixed in >=8.5.18). Not shipped in dist; dev/build tooling only.
+# Pin the same transitive toolchain's nanoid to the patched 3.x line for
+# GHSA-2v37-7h3g-55p8. The `<4` ceiling avoids an unreviewed major jump.
 overrides:
   postcss: ">=8.5.18"
+  nanoid: ">=3.3.17 <4"

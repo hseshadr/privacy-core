@@ -82,6 +82,11 @@ function remediation(lines: readonly number[]): string {
 }
 
 describe("pnpm supply-chain exemptions", () => {
+  it("pins nanoid to the patched 3.x line", () => {
+    const yaml = readFileSync(workspaceFile, "utf8");
+    expect(yaml).toContain('nanoid: ">=3.3.17 <4"');
+  });
+
   it("are absent from the committed workspace config", () => {
     const yaml = readFileSync(workspaceFile, "utf8");
     const lines = findExemptionLines(yaml);
