@@ -17,7 +17,7 @@ jobs:
 
       - name: Install pnpm
         # Version comes from package.json "packageManager" — one pin, no drift.
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -54,4 +54,4 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    uses: hseshadr/ci/.github/workflows/secret-scan.yml@605e51cbc86f452b56edcf1c9660921da797cbfe # ci-v3.2.1
+    uses: hseshadr/ci/.github/workflows/secret-scan.yml@dbae0a612749cbc024961c4ed3499622a8370b59 # ci-v3.2.1
