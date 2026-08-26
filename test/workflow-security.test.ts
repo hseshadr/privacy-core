@@ -85,9 +85,13 @@ interface Workflow {
   readonly yaml: string;
 }
 
+function isWorkflowFilename(file: string): boolean {
+  return file.endsWith(".yml") || file.endsWith(".yaml");
+}
+
 function readWorkflows(): readonly Workflow[] {
   return readdirSync(WORKFLOWS)
-    .filter((f) => f.endsWith(".yml"))
+    .filter(isWorkflowFilename)
     .map((file) => ({
       file,
       yaml: readFileSync(join(WORKFLOWS, file), "utf8"),
@@ -170,6 +174,12 @@ function scanPublishJobs(): readonly ScannedJob[] {
 }
 
 describe("GitHub Actions supply chain", () => {
+  it("recognizes both supported workflow filename extensions", () => {
+    expect(isWorkflowFilename("gate.yml")).toBe(true);
+    expect(isWorkflowFilename("gate.yaml")).toBe(true);
+    expect(isWorkflowFilename("notes.md")).toBe(false);
+  });
+
   it("finds workflows to scan (guards against a vacuous pass)", () => {
     expect(readWorkflows().length).toBeGreaterThan(0);
     expect(scanWorkflows().length).toBeGreaterThan(0);
