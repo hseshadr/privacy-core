@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Final, Self
 
 import dagger
@@ -23,6 +24,10 @@ REPOSITORY: Final = "hseshadr/privacy-core"
 REPOSITORY_URL: Final = f"https://github.com/{REPOSITORY}.git"
 PNPM_VERSION: Final = "11.5.0"
 SHA_LENGTH: Final = 40
+ARCHIVE_NAME: Final = re.compile(
+    r"^edgeproc-privacy-core-(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.tgz$"
+)
+CHECKSUM_LINE: Final = re.compile(r"^[0-9a-f]{64}  (?P<archive>[^\n]+)\n$")
 SOURCE_EXCLUDES: Final = [
     ".git",
     ".dagger/.venv",
@@ -155,6 +160,57 @@ class PrivacyCore:
         await self._identity(source, tag).sync()
         await self._run_ci(source, commit_sha)
         return self._candidate(source, tag).directory("/candidate")
+
+    @function
+    async def publish(
+        self,
+        candidate: dagger.Directory,
+        expected_sha: str,
+        oidc_url: dagger.Secret,
+        oidc_token: dagger.Secret,
+    ) -> str:
+        """Publish one exact source-free candidate with npm OIDC provenance."""
+        self._require_sha(expected_sha)
+        archive = await self._candidate_archive(candidate)
+        publish = self._publisher(candidate, oidc_url, oidc_token)
+        await publish.with_exec(["sha256sum", "--check", "SHA256SUMS"]).sync()
+        command = ["npm", "publish", archive, "--access", "public", "--provenance"]
+        return await publish.with_exec(command).stdout()
+
+    @staticmethod
+    async def _candidate_archive(candidate: dagger.Directory) -> str:
+        entries = sorted(await candidate.entries())
+        archives = [entry for entry in entries if ARCHIVE_NAME.fullmatch(entry)]
+        archive = PrivacyCore._only_archive(entries, archives)
+        checksum = await candidate.file("SHA256SUMS").contents()
+        PrivacyCore._require_checksum(checksum, archive)
+        return archive
+
+    @staticmethod
+    def _only_archive(entries: list[str], archives: list[str]) -> str:
+        if len(archives) != 1:
+            raise ValueError("candidate must contain one npm archive")
+        if entries != ["SHA256SUMS", archives[0]]:
+            raise ValueError("candidate must contain only the archive and SHA256SUMS")
+        return archives[0]
+
+    @staticmethod
+    def _require_checksum(checksum: str, archive: str) -> None:
+        match = CHECKSUM_LINE.fullmatch(checksum)
+        if match is None or match.group("archive") != archive:
+            raise ValueError("checksum identity does not match the npm archive")
+
+    @staticmethod
+    def _publisher(
+        candidate: dagger.Directory,
+        oidc_url: dagger.Secret,
+        oidc_token: dagger.Secret,
+    ) -> dagger.Container:
+        base = dag.container().from_(NODE_IMAGE).with_directory("/release", candidate)
+        base = base.with_workdir("/release").with_secret_variable(
+            "ACTIONS_ID_TOKEN_REQUEST_URL", oidc_url
+        )
+        return base.with_secret_variable("ACTIONS_ID_TOKEN_REQUEST_TOKEN", oidc_token)
 
     def _hosted(self, commit_sha: str, tag: str, token: dagger.Secret) -> dagger.Container:
         command = self._contract_command("github", tag, commit_sha)

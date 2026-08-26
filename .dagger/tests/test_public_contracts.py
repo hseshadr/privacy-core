@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from typing import cast
 
 import dagger
+import pytest
 
 from privacy_core.main import PrivacyCore
 
@@ -21,6 +23,26 @@ class RecordingWorkspace:
         self.path = path
         self.excludes = exclude
         return cast(dagger.Directory, object())
+
+
+class CandidateFile:
+    def __init__(self, contents: str) -> None:
+        self._contents = contents
+
+    async def contents(self) -> str:
+        return self._contents
+
+
+class RecordingCandidate:
+    def __init__(self, entries: list[str], checksum: str) -> None:
+        self._entries = entries
+        self._checksum = checksum
+
+    async def entries(self) -> list[str]:
+        return self._entries
+
+    def file(self, _path: str) -> dagger.File:
+        return cast(dagger.File, CandidateFile(self._checksum))
 
 
 def test_should_select_an_explicit_typed_workspace_root() -> None:
@@ -48,6 +70,7 @@ def test_should_expose_canonical_gate_and_release_boundaries() -> None:
         "quality",
         "dependency_audit",
         "offline",
+        "publish",
         "secret_scan",
         "workflow_security",
         "release_candidate",
@@ -66,6 +89,34 @@ def test_should_require_a_typed_secret_for_hosted_eligibility() -> None:
     assert token is not None
     assert token.annotation is dagger.Secret
     assert signature.return_annotation is dagger.Directory
+
+
+def test_should_keep_the_source_free_publisher_typed_and_provenanced() -> None:
+    signature = inspect.signature(PrivacyCore.publish, eval_str=True)
+    implementation = inspect.getsource(PrivacyCore.publish)
+
+    assert signature.parameters["candidate"].annotation is dagger.Directory
+    assert signature.parameters["oidc_url"].annotation is dagger.Secret
+    assert signature.parameters["oidc_token"].annotation is dagger.Secret
+    assert "--provenance" in implementation
+    assert "npm" in implementation
+
+
+def test_should_accept_only_one_checksumming_npm_candidate() -> None:
+    archive = "edgeproc-privacy-core-1.2.3.tgz"
+    candidate = RecordingCandidate([archive, "SHA256SUMS"], f"{'a' * 64}  {archive}\n")
+
+    result = asyncio.run(PrivacyCore._candidate_archive(cast(dagger.Directory, candidate)))
+
+    assert result == archive
+
+
+def test_should_reject_extra_or_misidentified_candidate_material() -> None:
+    archive = "edgeproc-privacy-core-1.2.3.tgz"
+    candidate = RecordingCandidate([archive, "SHA256SUMS", "source.ts"], f"{'a' * 64}  other.tgz\n")
+
+    with pytest.raises(ValueError, match="candidate must contain only"):
+        asyncio.run(PrivacyCore._candidate_archive(cast(dagger.Directory, candidate)))
 
 
 def test_should_pin_node_and_the_repository_package_manager() -> None:
