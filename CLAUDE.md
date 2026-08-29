@@ -89,9 +89,9 @@ Each rule carries the failure it exists to prevent:
   `node:fs` re-export in a shared barrel poisons every browser importer:
   build-green, runtime-dead, and only e2e catches it. `src/index.ts` stays
   browser-safe.
-- **Scheduled workflows count as CI.** A weekly `security-audit` run can catch a
+- **Scheduled workflows count as CI.** The weekly `dagger.yml` run can catch a
   live CVE behind an otherwise green badge. Check
-  `gh run list --workflow=security-audit.yml` — a red scheduled run is a red repo.
+  `gh run list --workflow=dagger.yml` — a red scheduled run is a red repo.
 
 ## WASM / edge-compute readiness
 

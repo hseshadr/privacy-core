@@ -30,6 +30,9 @@ ARCHIVE_NAME: Final = re.compile(
 CHECKSUM_LINE: Final = re.compile(r"^[0-9a-f]{64}  (?P<archive>[^\n]+)\n$")
 SOURCE_EXCLUDES: Final = [
     ".git",
+    ".dagger/.mypy_cache",
+    ".dagger/.pytest_cache",
+    ".dagger/.ruff_cache",
     ".dagger/.venv",
     ".dagger/sdk",
     ".mypy_cache",
@@ -138,10 +141,19 @@ class PrivacyCore:
 
     @function
     @check
-    async def ci(self, commit_sha: str = "") -> str:
-        """Run the canonical gate sequentially to bound runner memory."""
-        await self._run_ci(self.source, commit_sha)
+    async def ci(self, commit_sha: str) -> str:
+        """Guard the exact caller source before the canonical product gate."""
+        source = await self._verified_source(self.source, commit_sha)
+        await self._run_ci(source, commit_sha)
         return "Privacy Core canonical Dagger gate passed"
+
+    async def _verified_source(self, source: dagger.Directory, commit_sha: str) -> dagger.Directory:
+        """Bind and guard one exact caller snapshot before product evaluation."""
+        self._require_sha(commit_sha)
+        foundation = dag.foundation()
+        bound = foundation.source(source, REPOSITORY, commit_sha)
+        await foundation.guard(bound, REPOSITORY, commit_sha).sync()
+        return bound
 
     async def _run_ci(self, source: dagger.Directory, commit_sha: str = "") -> None:
         await self._quality(source).sync()

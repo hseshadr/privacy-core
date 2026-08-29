@@ -36,38 +36,36 @@ function actionName(step: Mapping): string {
 }
 
 describe("Dagger CI/CD ingress", () => {
-  it("keeps only the four final orchestration and release bridges", () => {
+  it("keeps one protected Dagger ingress and the two local npm release bridges", () => {
     expect(readdirSync(WORKFLOWS).sort()).toEqual([
       "dagger.yml",
       "publish.yml",
       "release-candidate.yml",
-      "security-audit.yml",
     ]);
   });
 
-  it("routes each code event through one exact pinned Dagger check", () => {
-    const dagger = job(workflow("dagger.yml"), "dagger");
+  it("routes code, manual, and weekly events through one exact-SHA Dagger check", () => {
+    const document = workflow("dagger.yml");
+    const dagger = job(document, "dagger");
     const ingress = steps(dagger);
+    const triggers = mapping(document.on);
 
     expect(dagger.name).toBe("Dagger");
+    expect(mapping(triggers.push).branches).toEqual(["main"]);
+    expect(triggers.pull_request).toBeNull();
+    expect(triggers.workflow_dispatch).toBeNull();
+    expect(triggers.schedule).toEqual([{ cron: "0 6 * * 1" }]);
     expect(ingress.map(actionName)).toEqual([CHECKOUT, DAGGER]);
     expect(mapping(ingress[0]?.with)).toEqual({
       "fetch-depth": 0,
       "persist-credentials": false,
+      ref: "$" + "{{ github.sha }}",
     });
     expect(mapping(ingress[1]?.with)).toEqual({
       version: "0.21.8",
-      verb: "call",
-      args: "ci --commit-sha=$" + "{{ github.sha }}",
+      call: "ci --commit-sha=$" + "{{ github.sha }}",
     });
-  });
-
-  it("routes the scheduled dependency sweep through Dagger only", () => {
-    const audit = job(workflow("security-audit.yml"), "dependency-audit");
-    const ingress = steps(audit);
-
-    expect(ingress.map(actionName)).toEqual([CHECKOUT, DAGGER]);
-    expect(mapping(ingress[1]?.with).args).toBe("dependency-audit");
+    expect(ingress.every((step) => typeof step.run !== "string")).toBe(true);
   });
 });
 

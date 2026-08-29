@@ -4,5 +4,12 @@
   "sdk": {
     "source": "python"
   },
+  "dependencies": [
+    {
+      "name": "foundation",
+      "source": "github.com/hseshadr/ci/modules/portfolio-foundation@068c3c08c4d342b3dc2784cdc3804f2b2d51d622",
+      "pin": "068c3c08c4d342b3dc2784cdc3804f2b2d51d622"
+    }
+  ],
   "source": ".dagger"
 }
