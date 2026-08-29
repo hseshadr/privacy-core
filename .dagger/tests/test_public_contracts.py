@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
+from pathlib import Path
 from typing import cast
 
 import dagger
 import pytest
 
+import privacy_core.main as main_module
 from privacy_core.main import PrivacyCore
+
+CENTRAL_SHA = "068c3c08c4d342b3dc2784cdc3804f2b2d51d622"
+REPOSITORY = "hseshadr/privacy-core"
+VALID_SHA = "a" * 40
 
 
 class RecordingWorkspace:
@@ -45,6 +52,50 @@ class RecordingCandidate:
         return cast(dagger.File, CandidateFile(self._checksum))
 
 
+class RecordingSync:
+    """Record one forced Dagger boundary and optionally reject it."""
+
+    def __init__(self, name: str, events: list[str], error: ValueError | None = None) -> None:
+        self.name = name
+        self.events = events
+        self.error = error
+
+    async def sync(self) -> None:
+        if self.error is not None:
+            raise self.error
+        self.events.append(self.name)
+
+
+class RecordingFoundation:
+    """Model the exact source-binding and guard boundary."""
+
+    def __init__(self, events: list[str], error: ValueError | None = None) -> None:
+        self.events = events
+        self.error = error
+        self.bound = cast(dagger.Directory, "bound-source")
+
+    def source(
+        self, source: dagger.Directory, repository: str, commit_sha: str
+    ) -> dagger.Directory:
+        assert (source, repository, commit_sha) == ("caller-source", REPOSITORY, VALID_SHA)
+        self.events.append("source")
+        return self.bound
+
+    def guard(self, source: dagger.Directory, repository: str, commit_sha: str) -> dagger.Container:
+        assert (source, repository, commit_sha) == (self.bound, REPOSITORY, VALID_SHA)
+        return cast(dagger.Container, RecordingSync("guard", self.events, self.error))
+
+
+class RecordingDag:
+    """Expose only the Foundation client used by the canonical check."""
+
+    def __init__(self, foundation: RecordingFoundation) -> None:
+        self.foundation_client = foundation
+
+    def foundation(self) -> RecordingFoundation:
+        return self.foundation_client
+
+
 def test_should_select_an_explicit_typed_workspace_root() -> None:
     workspace = RecordingWorkspace()
 
@@ -53,6 +104,21 @@ def test_should_select_an_explicit_typed_workspace_root() -> None:
     assert workspace.path == "/"
     assert ".git" in workspace.excludes
     assert "node_modules" in workspace.excludes
+
+
+def test_should_exclude_generated_python_gate_state_from_source_binding() -> None:
+    # Given
+    workspace = RecordingWorkspace()
+
+    # When
+    PrivacyCore.create(cast(dagger.Workspace, workspace))
+
+    # Then
+    assert {
+        ".dagger/.mypy_cache",
+        ".dagger/.pytest_cache",
+        ".dagger/.ruff_cache",
+    } <= set(workspace.excludes)
 
 
 def test_should_require_typed_workspace_when_constructing_graph() -> None:
@@ -145,3 +211,73 @@ def test_should_install_frozen_dependencies_without_the_global_escape_hatch() ->
     assert module.INSTALL_COMMAND == ["pnpm", "install", "--frozen-lockfile"]
     assert "dangerously-allow-all-builds" not in implementation
     assert '["pnpm", "gate"]' in implementation
+
+
+def test_should_pin_foundation_to_the_exact_central_commit() -> None:
+    # Given
+    config = json.loads((Path(__file__).parents[2] / "dagger.json").read_text())
+
+    # When
+    dependencies = config.get("dependencies", [])
+
+    # Then
+    assert dependencies == [
+        {
+            "name": "foundation",
+            "source": f"github.com/hseshadr/ci/modules/portfolio-foundation@{CENTRAL_SHA}",
+            "pin": CENTRAL_SHA,
+        }
+    ]
+
+
+def test_should_require_an_explicit_commit_for_the_canonical_check() -> None:
+    # Given / When
+    signature = inspect.signature(PrivacyCore.ci)
+
+    # Then
+    assert signature.parameters["commit_sha"].default is inspect.Signature.empty
+
+
+def test_should_bind_guard_then_run_products_on_the_bound_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    events: list[str] = []
+    foundation = RecordingFoundation(events)
+    core = PrivacyCore.__new__(PrivacyCore)
+    core.source = cast(dagger.Directory, "caller-source")
+
+    async def run_products(source: dagger.Directory, *_identity: object) -> None:
+        assert source == foundation.bound
+        events.append("product")
+
+    monkeypatch.setattr(main_module, "dag", RecordingDag(foundation))
+    monkeypatch.setattr(core, "_run_ci", run_products)
+
+    # When
+    result = asyncio.run(core.ci(VALID_SHA))
+
+    # Then
+    assert result == "Privacy Core canonical Dagger gate passed"
+    assert events == ["source", "guard", "product"]
+
+
+def test_should_stop_before_products_when_foundation_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    events: list[str] = []
+    foundation = RecordingFoundation(events, ValueError("guard rejected"))
+    core = PrivacyCore.__new__(PrivacyCore)
+    core.source = cast(dagger.Directory, "caller-source")
+
+    async def run_products(*_arguments: object) -> None:
+        events.append("product")
+
+    monkeypatch.setattr(main_module, "dag", RecordingDag(foundation))
+    monkeypatch.setattr(core, "_run_ci", run_products)
+
+    # When / Then
+    with pytest.raises(ValueError, match="guard rejected"):
+        asyncio.run(core.ci(VALID_SHA))
+    assert events == ["source"]
