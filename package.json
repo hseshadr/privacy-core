@@ -52,7 +52,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@edgeproc/avow": "^0.1.1"
+    "@edgeproc/avow": "^0.4.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
