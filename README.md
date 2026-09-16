@@ -318,6 +318,9 @@ above. `pnpm build` re-proves the compile-time half on every build.
 
 ## Architecture — maps 1:1 to `src/`
 
+Explore the [interactive architecture map](docs/architecture/index.html) for an
+evidence-linked, fully offline view of the egress lifecycle.
+
 ```text
 src/
 ├── index.ts            # public API barrel — the production surface, nothing else
