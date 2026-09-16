@@ -69,9 +69,9 @@
     "@biomejs/biome": "^2.4.16",
     "@playwright/test": "^1.60.0",
     "@types/node": "^26.1.1",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.7",
+    "vitest": "^4.1.11",
     "yaml": "^2.9.0"
   }
 }
