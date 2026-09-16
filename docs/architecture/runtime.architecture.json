@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Privacy Core Egress Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/hseshadr/privacy-core",
+      "revision": "27f1322cb9813c312b744c9c004d431ea4a31efa"
+    },
+    "viewBox": [1360, 700],
+    "views": [
+      {
+        "id": "safe-egress",
+        "label": "Safe egress path",
+        "focus": ["raw-text", "redaction-pipeline", "approval", "egress-guard", "provider"],
+        "note": "Follow private text until only an approved placeholder payload can cross the network."
+      },
+      {
+        "id": "local-restore",
+        "label": "Local restore path",
+        "focus": ["redaction-pipeline", "vault", "provider", "rehydrate"],
+        "note": "Real values remain in the in-memory vault and are restored only after the provider replies."
+      },
+      {
+        "id": "governed-egress",
+        "label": "Governed egress",
+        "focus": ["approval", "egress-guard", "egress-receipt", "provider"],
+        "note": "An optional governance context seals every allow or fail-closed deny without recording plaintext."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "raw-text",
+      "type": "external",
+      "label": "Private Text",
+      "sublabel": "raw values on device",
+      "pos": [30, 300],
+      "size": [150, 76],
+      "sources": [
+        {"path": "docs/ARCHITECTURE.md", "line": 3, "end_line": 10, "label": "Privacy invariant"}
+      ]
+    },
+    {
+      "id": "redaction-pipeline",
+      "type": "backend",
+      "label": "Detect + Redact",
+      "sublabel": "rules · checksums · placeholders",
+      "tag": "deterministic + bounded",
+      "pos": [280, 300],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/detect/detector.ts", "line": 42, "end_line": 74, "label": "Deterministic spans"},
+        {"path": "src/redact.ts", "line": 86, "end_line": 118, "label": "Bounded redaction"},
+        {"path": "docs/ARCHITECTURE.md", "line": 29, "end_line": 42, "label": "Detection flow"}
+      ]
+    },
+    {
+      "id": "approval",
+      "type": "security",
+      "label": "Explicit Approval",
+      "sublabel": "review PendingRedaction",
+      "tag": "audit sink required",
+      "pos": [560, 300],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/egress.ts", "line": 102, "end_line": 133, "label": "Approval capability"},
+        {"path": "docs/ARCHITECTURE.md", "line": 43, "end_line": 46, "label": "Human review step"}
+      ]
+    },
+    {
+      "id": "egress-guard",
+      "type": "security",
+      "label": "Egress Guard",
+      "sublabel": "type + runtime chokepoint",
+      "tag": "RedactedPayload only",
+      "pos": [840, 300],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/egress.ts", "line": 40, "end_line": 79, "label": "Branded boundary"},
+        {"path": "src/egress.ts", "line": 136, "end_line": 165, "label": "Guarded provider"},
+        {"path": "README.md", "line": 291, "end_line": 317, "label": "Compile-time and runtime guard"}
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "LLM Provider",
+      "sublabel": "OpenRouter or offline echo",
+      "tag": "placeholder text only",
+      "pos": [1120, 300],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/providers/factory.ts", "line": 31, "end_line": 60, "label": "Provider selection"},
+        {"path": "src/providers/openrouter.ts", "line": 39, "end_line": 92, "label": "Bounded network adapter"}
+      ]
+    },
+    {
+      "id": "vault",
+      "type": "database",
+      "label": "In-memory Vault",
+      "sublabel": "stable token ↔ value map",
+      "tag": "clears on reload",
+      "pos": [280, 510],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/vault.ts", "line": 5, "end_line": 41, "label": "Reversible vault"}
+      ]
+    },
+    {
+      "id": "egress-receipt",
+      "type": "security",
+      "label": "Egress Receipt",
+      "sublabel": "signed allow / deny digest",
+      "tag": "opt-in governance",
+      "pos": [840, 80],
+      "size": [180, 78],
+      "sources": [
+        {"path": "src/egressReceipt.ts", "line": 1, "end_line": 22, "label": "No-plaintext receipt"},
+        {"path": "src/egressReceipt.ts", "line": 77, "end_line": 104, "label": "Governance contract"}
+      ]
+    },
+    {
+      "id": "rehydrate",
+      "type": "backend",
+      "label": "Local Rehydrate",
+      "sublabel": "vault-bound restoration",
+      "tag": "fail closed",
+      "pos": [1120, 510],
+      "size": [180, 80],
+      "sources": [
+        {"path": "src/rehydrate.ts", "line": 8, "end_line": 46, "label": "Bound local restore"}
+      ]
+    }
+  ],
+  "connections": [
+    {"id": "raw-redact", "from": "raw-text", "to": "redaction-pipeline", "label": "private text", "variant": "emphasis"},
+    {"id": "redact-approval", "from": "redaction-pipeline", "to": "approval", "label": "PendingRedaction"},
+    {"id": "approval-guard", "from": "approval", "to": "egress-guard", "label": "RedactedPayload", "variant": "security"},
+    {"id": "guard-provider", "from": "egress-guard", "to": "provider", "label": "placeholders only", "variant": "emphasis"},
+    {"id": "pipeline-vault", "from": "redaction-pipeline", "to": "vault", "label": "tokenize values", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [370, 394]},
+    {"id": "guard-receipt", "from": "egress-guard", "to": "egress-receipt", "label": "seal decision", "variant": "security", "fromSide": "top", "toSide": "bottom"},
+    {"id": "provider-rehydrate", "from": "provider", "to": "rehydrate", "label": "redacted reply", "fromSide": "bottom", "toSide": "top", "labelAt": [1210, 394]},
+    {"id": "vault-rehydrate", "from": "vault", "to": "rehydrate", "label": "resolve placeholders", "variant": "dashed"}
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Local-first privacy",
+      "items": [
+        "Deterministic rules replace recognized values with stable typed placeholders",
+        "The v0 vault keeps real values only in memory and clears on reload"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Capability boundary",
+      "items": [
+        "A raw string cannot satisfy the provider contract; approval mints the sendable capability",
+        "Object-identity checks reject forged or cloned payloads before network I/O"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Honest scope",
+      "items": [
+        "Human review covers sensitive values outside the published deterministic ruleset",
+        "Provider requests and responses are bounded; local rehydration fails on a wrong vault or unknown token"
+      ]
+    }
+  ]
+}
