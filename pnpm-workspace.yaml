@@ -2,6 +2,14 @@ packages:
   - "."
   - "examples/*"
 
+# Supply-chain cooldown: refuse any dependency version published less than 24h
+# ago — the window in which a compromised release is usually caught and pulled.
+# pnpm 11.5.0 already defaults to this, but a default is not a policy, so it is
+# stated here and held by test/registry-maturity.test.ts. Never add a
+# `minimumReleaseAgeExclude:` list or `minimumReleaseAgeStrict: false`; when the
+# cooldown refuses a fresh release, wait the window out.
+minimumReleaseAge: 1440
+
 allowBuilds:
   "@biomejs/biome": true
   esbuild: true
