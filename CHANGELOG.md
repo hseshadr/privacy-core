@@ -152,6 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variables stripped must still fail with `provider: null`. (`--dry-run` could
   not prove this: npm 11 returns before provenance on a dry run.) It does not
   exercise a real OIDC exchange or Sigstore signing — only a GitHub run can.
+  The publisher also hands npm the archive as `./<name>.tgz`, so the argument
+  can never be read as an `owner/repo` GitHub shorthand.
 - **The publisher now binds the candidate to `main`.** `publish.yml` only
   checked `workflow_run.head_branch == default_branch`, which a dispatch on a
   TAG named `main` also satisfies. Before touching the artifact it now verifies,
