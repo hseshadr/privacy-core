@@ -268,14 +268,14 @@ refused: UnapprovedPayloadError
   provider: 'offline-echo',
   args_digest: 'sha256:091a3728dd5622843e14ffb925abcec1bd1cb5ad6461154ab0893b68f63d50b1',
   decision: 'allow',
-  detector_version: '1'
+  detector_version: '2'
 }
 {
   action: 'llm.egress',
   provider: 'offline-echo',
   args_digest: 'sha256:6726c6222d515ab998abb62680724ca993157f40a9021ab0643d0e967f4b417b',
   decision: 'deny',
-  detector_version: '1'
+  detector_version: '2'
 }
 
 signature check: passed

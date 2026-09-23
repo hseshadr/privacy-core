@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Egress receipts now carry `detector_version: "2"`.** `DETECTOR_VERSION` is
+  bumped from `"1"` because the detection ruleset changed (the Unicode email,
+  spaced/unseparated SSN and NANP phone recognizers under *Fixed*), so a 0.3.0
+  receipt can be told apart from one sealed by 0.2.x. This is a wire-visible
+  change: a verifier that compares `detector_version` against an allow-list must
+  accept `"2"`. Receipts sealed with a caller-pinned `detectorVersion` are
+  unaffected. A new test pins each detector version to a fingerprint of the
+  ruleset (every rule's type, pattern, flags and accept-gate in priority order,
+  plus the dictionaries), so a ruleset change without a version bump now fails
+  the gate.
 - **Truth-in-labeling: the package is described as what it is — a
   structured-identifier redaction boundary.** The npm `description` now names
   the detected categories (cards, IBANs, SSNs, emails, US phones, labeled
