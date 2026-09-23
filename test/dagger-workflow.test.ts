@@ -138,13 +138,14 @@ describe("exact Dagger npm release bridge", () => {
       "id-token": "write",
     });
     expect(publishSteps.map(actionName)).toEqual([
+      "run",
       DOWNLOAD,
       DAGGER,
       "run",
       "run",
     ]);
-    expect(mapping(publishSteps[1]?.with)).toEqual({ version: "0.21.8" });
-    const [, , context, release] = publishSteps;
+    expect(mapping(publishSteps[2]?.with)).toEqual({ version: "0.21.8" });
+    const [, , , context, release] = publishSteps;
     // npm's provenance needs the runner's GitHub Actions context inside the
     // Dagger container; the Dagger publisher validates every value.
     for (const name of [
@@ -167,9 +168,12 @@ describe("exact Dagger npm release bridge", () => {
       HEAD_SHA: "$" + "{{ github.event.workflow_run.head_sha }}",
     });
     const command = String(release?.run);
+    // The publisher CODE comes from the trusted default-branch commit this
+    // workflow runs on, never from the candidate's (dispatch-controlled) sha.
     expect(command).toContain(
-      '-m "github.com/hseshadr/privacy-core@$HEAD_SHA"',
+      '-m "github.com/hseshadr/privacy-core@$GITHUB_SHA"',
     );
+    expect(command).not.toContain("privacy-core@$HEAD_SHA");
     expect(command).toContain(
       'publish --candidate=release --expected-sha="$HEAD_SHA"',
     );
@@ -183,6 +187,50 @@ describe("exact Dagger npm release bridge", () => {
     expect(readFileSync(resolve(WORKFLOWS, "publish.yml"), "utf8")).not.toMatch(
       /\b(?:build|test|install|checkout|npm publish)\b/i,
     );
+  });
+
+  it("publishes only a candidate built by release-candidate.yml for a main commit", () => {
+    const [lineage, download] = steps(job(workflow("publish.yml"), "publish"));
+    const script = String(lineage?.run);
+
+    // First step, before any artifact is touched.
+    expect(lineage?.name).toBe("Verify the candidate's lineage");
+    expect(mapping(lineage?.env)).toEqual({
+      GH_TOKEN: "$" + "{{ github.token }}",
+      HEAD_SHA: "$" + "{{ github.event.workflow_run.head_sha }}",
+      RUN_ID: "$" + "{{ github.event.workflow_run.id }}",
+    });
+    expect(script).toContain("set -euo pipefail");
+    expect(script).toContain('[[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]');
+    expect(script).toContain('[[ "$RUN_ID" =~ ^[0-9]+$ ]]');
+    // The triggering run really is a successful dispatch of release-candidate.yml
+    // on this repository, for exactly HEAD_SHA...
+    expect(script).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"',
+    );
+    for (const clause of [
+      ".head_sha == $sha",
+      '.event == "workflow_dispatch"',
+      '.conclusion == "success"',
+      '(.path | split("@")[0]) == ".github/workflows/release-candidate.yml"',
+      ".repository.full_name == $repo",
+      ".head_repository.full_name == $repo",
+    ]) {
+      expect(script).toContain(clause);
+    }
+    // ...and HEAD_SHA is reachable from main. `head_branch == default_branch`
+    // alone is satisfied by a dispatch on a TAG named `main`.
+    expect(script).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/compare/$HEAD_SHA...$GITHUB_SHA" --jq .status',
+    );
+    expect(script).toContain(
+      '[[ "$status" == identical || "$status" == ahead ]]',
+    );
+    // The archive is that run's own artifact for that exact commit.
+    expect(mapping(download?.with)).toMatchObject({
+      name: "privacy-core-$" + "{{ github.event.workflow_run.head_sha }}",
+      "run-id": "$" + "{{ github.event.workflow_run.id }}",
+    });
   });
 
   it("keeps every external bridge pinned to immutable identity", () => {

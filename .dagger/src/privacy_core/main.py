@@ -104,6 +104,26 @@ GITLEAKS_HISTORY: Final = [
     "--no-banner",
 ]
 
+# A synthetic, valid publisher context for the provenance probe. The probe runs
+# the real npm from NODE_IMAGE against a loopback stub, so these values never
+# reach a registry; they only need to pass the same validation as a real run.
+PROBE_PORT: Final = 47291
+PROBE_SCRIPT: Final = "scripts/provenance-probe.mts"
+PROBE_CONTEXT: Final = {
+    "GITHUB_EVENT_NAME": "workflow_run",
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_REPOSITORY": REPOSITORY,
+    "GITHUB_REPOSITORY_ID": "1",
+    "GITHUB_REPOSITORY_OWNER_ID": "1",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "GITHUB_RUN_ID": "1",
+    "GITHUB_SERVER_URL": "https://github.com",
+    "GITHUB_SHA": "0" * 40,
+    "GITHUB_WORKFLOW": "Publish (npm, OIDC)",
+    "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/publish.yml@refs/heads/main",
+    "RUNNER_ENVIRONMENT": "github-hosted",
+}
+
 
 @object_type
 class PrivacyCore:
@@ -185,8 +205,25 @@ class PrivacyCore:
         await foundation.guard(bound, REPOSITORY, commit_sha).sync()
         return bound
 
+    @function
+    def provenance_probe(self) -> dagger.Container:
+        """Prove the publisher container's npm detects GitHub Actions and starts provenance."""
+        return self._provenance_probe(self.source)
+
+    def _provenance_probe(self, source: dagger.Directory) -> dagger.Container:
+        """Run scripts/provenance-probe.mts in exactly the container `publish` builds."""
+        environment = self._provenance_environment(json.dumps(PROBE_CONTEXT))
+        url = dag.set_secret(
+            "provenance-probe-oidc-url", f"http://127.0.0.1:{PROBE_PORT}/token?probe=1"
+        )
+        token = dag.set_secret("provenance-probe-oidc-token", "probe-not-a-token")
+        probe = self._publisher(dag.directory(), url, token, environment)
+        probe = probe.with_file("/probe/provenance-probe.mts", source.file(PROBE_SCRIPT))
+        return probe.with_exec(["node", "/probe/provenance-probe.mts"])
+
     async def _run_ci(self, source: dagger.Directory, commit_sha: str = "") -> None:
         await self._quality(source).sync()
+        await self._provenance_probe(source).sync()
         await self._dependency_audit(source).sync()
         await self._secret_scan(source, commit_sha).sync()
         await self._workflow_security(source).sync()

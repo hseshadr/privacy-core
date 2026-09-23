@@ -140,6 +140,7 @@ def test_should_expose_canonical_gate_and_release_boundaries() -> None:
         "secret_scan",
         "workflow_security",
         "release_candidate",
+        "provenance_probe",
     }
 
     available = {name for name in expected if hasattr(PrivacyCore, name)}
@@ -345,6 +346,10 @@ class RecordingContainer:
         self.calls.append(("env", (name, value)))
         return self
 
+    def with_file(self, path: str, _file: object) -> RecordingContainer:
+        self.calls.append(("file", path))
+        return self
+
     def with_exec(self, command: list[str]) -> RecordingContainer:
         self.calls.append(("exec", command))
         return self
@@ -359,9 +364,26 @@ class RecordingContainer:
 class ContainerDag:
     def __init__(self, container: RecordingContainer) -> None:
         self.recording = container
+        self.secrets: dict[str, str] = {}
 
     def container(self) -> RecordingContainer:
         return self.recording
+
+    def directory(self) -> object:
+        return object()
+
+    def set_secret(self, name: str, value: str) -> str:
+        self.secrets[name] = value
+        return name
+
+
+class ProbeSource:
+    def __init__(self) -> None:
+        self.files: list[str] = []
+
+    def file(self, path: str) -> object:
+        self.files.append(path)
+        return object()
 
 
 def publish_with(context: str, monkeypatch: pytest.MonkeyPatch) -> RecordingContainer:
@@ -463,3 +485,56 @@ def test_should_refuse_a_release_tag_that_is_not_plain_semver(tag: str) -> None:
 
     with pytest.raises(ValueError, match="tag"):
         asyncio.run(core.release_candidate(tag, VALID_SHA, cast(dagger.Secret, object())))
+
+
+def test_should_probe_npm_provenance_in_exactly_the_publisher_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    container = RecordingContainer()
+    fake = ContainerDag(container)
+    monkeypatch.setattr(main_module, "dag", fake)
+    source = ProbeSource()
+    core = PrivacyCore.__new__(PrivacyCore)
+
+    # When
+    core._provenance_probe(cast(dagger.Directory, source))
+
+    # Then: the same image, the same validated provenance env, the same OIDC
+    # variable names — pointed at the probe's loopback stub — then the probe.
+    env = dict(cast(tuple[str, str], value) for kind, value in container.calls if kind == "env")
+    assert ("from", main_module.NODE_IMAGE) in container.calls
+    assert env["GITHUB_ACTIONS"] == "true"
+    assert set(env) >= NPM_PROVENANCE_READS
+    secrets = {value for kind, value in container.calls if kind == "secret"}
+    assert secrets == {"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+    assert fake.secrets["provenance-probe-oidc-url"].startswith("http://127.0.0.1:")
+    assert source.files == ["scripts/provenance-probe.mts"]
+    assert container.calls[-1] == ("exec", ["node", "/probe/provenance-probe.mts"])
+
+
+def test_should_run_the_provenance_probe_in_the_canonical_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    events: list[str] = []
+    core = PrivacyCore.__new__(PrivacyCore)
+    for name in ("_quality", "_provenance_probe", "_dependency_audit", "_workflow_security"):
+        monkeypatch.setattr(
+            core,
+            name,
+            lambda *_args, label=name: RecordingSync(label, events),
+        )
+    monkeypatch.setattr(core, "_secret_scan", lambda *_args: RecordingSync("_secret_scan", events))
+
+    # When
+    asyncio.run(core._run_ci(cast(dagger.Directory, "source"), VALID_SHA))
+
+    # Then
+    assert events == [
+        "_quality",
+        "_provenance_probe",
+        "_dependency_audit",
+        "_secret_scan",
+        "_workflow_security",
+    ]
