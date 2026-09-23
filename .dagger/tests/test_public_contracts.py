@@ -555,3 +555,81 @@ def test_should_hand_npm_publish_a_path_it_can_never_read_as_a_spec(
     # Then
     assert publish[:2] == ["npm", "publish"]
     assert publish[2].startswith(("./", "/"))
+
+
+class PrivilegeAwareContainer(RecordingContainer):
+    """`RecordingContainer` plus the one runtime rule the release graph broke:
+    only root may create a directory directly beneath `/`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.user = "0:0"
+
+    def with_user(self, user: str) -> PrivilegeAwareContainer:
+        self.user = user
+        self.calls.append(("user", user))
+        return self
+
+    def with_directory(
+        self, path: str, _directory: object, *, owner: str = ""
+    ) -> PrivilegeAwareContainer:
+        self.calls.append(("directory", path))
+        return self
+
+    def with_mounted_cache(
+        self, path: str, _cache: object, *, owner: str = ""
+    ) -> PrivilegeAwareContainer:
+        self.calls.append(("cache", path))
+        return self
+
+    def with_exec(self, command: list[str]) -> PrivilegeAwareContainer:
+        if command and command[0] == "mkdir":
+            self._refuse_unprivileged_root_write(command[1:])
+        self.calls.append(("exec", command))
+        return self
+
+    def _refuse_unprivileged_root_write(self, targets: list[str]) -> None:
+        if self.user == "0:0":
+            return
+        for target in targets:
+            if target.startswith("/") and target.count("/") == 1:
+                raise PermissionError(
+                    f"mkdir: cannot create directory '{target}': Permission denied"
+                )
+
+
+class PrivilegeDag(ContainerDag):
+    """`ContainerDag` that also serves the pnpm cache volume the node base mounts."""
+
+    def cache_volume(self, _name: str) -> object:
+        return object()
+
+
+def test_should_build_the_candidate_without_an_unprivileged_root_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    container = PrivilegeAwareContainer()
+    monkeypatch.setattr(main_module, "dag", PrivilegeDag(container))
+    core = PrivacyCore.__new__(PrivacyCore)
+
+    # When
+    core._candidate(cast(dagger.Directory, "caller-source"), "v0.3.0")
+
+    # Then
+    execs = [cast(list[str], command) for kind, command in container.calls if kind == "exec"]
+    assert ["mkdir", "-p", "/candidate"] in execs
+    assert any(command[:2] == ["npm", "pack"] for command in execs)
+
+
+def test_should_model_the_root_directory_permission_rule() -> None:
+    # Given / When / Then — root may create a directory directly under `/`.
+    PrivilegeAwareContainer().with_exec(["mkdir", "-p", "/candidate"])
+
+    # The runtime user may not, which is exactly how the v0.3.0 release died.
+    dropped = PrivilegeAwareContainer().with_user("65532:65532")
+    with pytest.raises(PermissionError, match="/candidate"):
+        dropped.with_exec(["mkdir", "-p", "/candidate"])
+
+    # Nested paths under an existing writable tree stay allowed for any user.
+    dropped.with_exec(["mkdir", "-p", "/opt/home", "/opt/playwright"])
