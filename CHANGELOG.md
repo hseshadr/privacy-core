@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-23
+
 ### Fixed
 
 - **The detector no longer leaks three ordinary formats of the PII it advertises.**
@@ -75,16 +77,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the code, and diffs in review. Weaker layout control is the accepted
   trade. The diagrams directory is gone; there is no render step to run.
 
-- **`@edgeproc/avow` 0.1.0 → 0.1.1**, which splits a failed verification into two
-  security-distinct subclasses of the published `SignatureInvalid` base:
-  `SignerMismatch` (`avow.signer_mismatch`) when the receipt's embedded key is
-  not the pinned signer — a *provenance* failure caught before any cryptography
-  runs — and `SignatureBytesInvalid` (which keeps `avow.signature_invalid`) when
-  the Ed25519 check rejects the bytes — a *tamper* failure. Purely additive: a
-  caller catching `SignatureInvalid` still catches both. No public API change to
-  this package; `verifySignature` is re-exported from `@edgeproc/avow` unchanged.
-  The receipt tests now assert each cause by its own subclass, code, and message,
-  so a wrong-signer rejection can no longer pass as a forged-signature rejection.
+- **Runtime dependency `@edgeproc/avow` moves from `^0.1.1` to `^0.4.1`** (0.2.2
+  shipped `^0.1.0`). This is the minor-version reason for this release: `^0.1.x` could
+  never resolve a 0.4 envelope. What this package calls is unchanged —
+  `signPayload`, `contentHash` (re-exported), and the `SignedReceipt` shape produce
+  the same canonical bytes, hashes, and signatures, so receipts sealed by 0.2.x still
+  verify and new receipts verify under older verifiers. What changes is what a
+  verifier sees when it rejects a receipt:
+  - a tampered payload now throws `PayloadHashMismatch` with code
+    `avow.payload_hash_mismatch`. Before, the class was `ReplayMismatch` and the
+    code was `avow.replay_mismatch`. `ReplayMismatch` remains as a deprecated alias
+    of the new class, so `instanceof` checks keep working, but code matches on the
+    old string no longer do;
+  - a wrong signer throws `SignerMismatch` (`avow.signer_mismatch`), and bad
+    signature bytes throw `SignatureBytesInvalid` (`avow.signature_invalid`). Both
+    still extend `SignatureInvalid`;
+  - the pinned public key is compared case-insensitively, so the same key written in
+    upper- and lower-case hex no longer reads as a signer mismatch.
+
+  The receipt tests assert each rejection by its own subclass and code.
 
 ## [0.2.2] — 2026-07-25
 

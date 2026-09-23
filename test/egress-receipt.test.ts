@@ -1,8 +1,8 @@
 import {
   type AvowError,
   contentHash,
+  PayloadHashMismatch,
   publicKeyHex,
-  ReplayMismatch,
   SignatureBytesInvalid,
   SignatureInvalid,
   SignerMismatch,
@@ -133,7 +133,7 @@ describe("egress receipt (signed, pinned-key verifiable)", () => {
     expect(receipt.payload.args_digest.startsWith("sha256:")).toBe(true);
   });
 
-  it("rejects a tampered decision with a coded ReplayMismatch", async () => {
+  it("rejects a tampered decision with a coded PayloadHashMismatch", async () => {
     const receipt = await sealEgressReceipt(
       { provider: "openrouter", redactedText: REDACTED, decision: "allow" },
       SEED_HEX,
@@ -142,9 +142,14 @@ describe("egress receipt (signed, pinned-key verifiable)", () => {
       ...receipt,
       payload: { ...receipt.payload, decision: "deny" as const },
     };
-    await expect(
+    const error = await rejectionOf(
       verifySignature(tampered, await publicKeyHex(SEED_HEX)),
-    ).rejects.toThrow(ReplayMismatch);
+    );
+    // `@edgeproc/avow` ^0.4.1 names this TAMPER failure for what it detects: the
+    // payload no longer matches its signed hash. The deprecated `ReplayMismatch`
+    // alias is not asserted, and neither is its retired `avow.replay_mismatch` code.
+    expect(error).toBeInstanceOf(PayloadHashMismatch);
+    expect(error.code).toBe("avow.payload_hash_mismatch");
   });
 
   it("rejects a receipt under a wrong pinned key as a coded SignerMismatch", async () => {
