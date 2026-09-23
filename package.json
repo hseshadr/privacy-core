@@ -51,7 +51,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@edgeproc/avow": "^0.1.1"
+    "@edgeproc/avow": "^0.4.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -65,12 +65,12 @@
     "gate": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e && pnpm build"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@playwright/test": "^1.60.0",
-    "@types/node": "^26.1.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@biomejs/biome": "^2.5.14",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
+    "@vitest/coverage-v8": "^5.0.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
-    "yaml": "^2.9.0"
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1"
   }
 }
