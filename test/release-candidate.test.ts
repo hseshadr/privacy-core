@@ -8,8 +8,12 @@ const SCRIPT = resolve(import.meta.dirname, "../scripts/release-contract.ts");
 const SHA = "a".repeat(40);
 
 function runContract(...args: readonly string[]) {
+  // Hermetic: an ambient GITHUB_TOKEN/GH_TOKEN on a developer machine or agent
+  // sandbox would otherwise send the "missing token" case to the live API.
+  const { GITHUB_TOKEN: _token, GH_TOKEN: _gh, ...env } = process.env;
   return spawnSync(process.execPath, [SCRIPT, ...args], {
     encoding: "utf8",
+    env,
   });
 }
 

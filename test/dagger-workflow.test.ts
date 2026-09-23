@@ -77,18 +77,47 @@ describe("exact Dagger npm release bridge", () => {
 
     expect(mapping(document.on).workflow_dispatch).toBeDefined();
     expect(candidate.if).toBe("github.ref == 'refs/heads/main'");
-    expect(candidateSteps.map(actionName)).toEqual([CHECKOUT, DAGGER, UPLOAD]);
-    expect(String(mapping(candidateSteps[1]?.with).args)).toContain(
-      "release-candidate --tag=$" +
-        "{{ inputs.tag }} --commit-sha=$" +
-        "{{ github.sha }}",
-    );
-    expect(mapping(candidateSteps[2]?.with)).toEqual({
+    expect(candidateSteps.map(actionName)).toEqual([
+      "run",
+      CHECKOUT,
+      DAGGER,
+      "run",
+      UPLOAD,
+    ]);
+    expect(mapping(candidateSteps[4]?.with)).toEqual({
       name: "privacy-core-$" + "{{ github.sha }}",
       path: "release/",
       "if-no-files-found": "error",
       "retention-days": 1,
     });
+  });
+
+  it("validates the dispatched tag before anything runs, and only ever as $TAG", () => {
+    const candidateSteps = steps(
+      job(workflow("release-candidate.yml"), "candidate"),
+    );
+    const [validate, , install, build] = candidateSteps;
+
+    // The tag is attacker-shapeable text: it may reach shell only through the
+    // environment, and the first step refuses anything but a plain vX.Y.Z.
+    expect(validate?.name).toBe("Validate release tag");
+    expect(mapping(validate?.env)).toEqual({ TAG: "$" + "{{ inputs.tag }}" });
+    expect(String(validate?.run)).toContain("exit 1");
+    expect(String(validate?.run)).toContain(
+      '"$TAG" =~ ^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$ ]]',
+    );
+    // dagger-for-github pastes `args`/`call` into bash unquoted: install only.
+    expect(mapping(install?.with)).toEqual({ version: "0.21.8" });
+    expect(mapping(build?.env)).toEqual({
+      TAG: "$" + "{{ inputs.tag }}",
+      GITHUB_TOKEN: "$" + "{{ github.token }}",
+    });
+    expect(String(build?.run)).toContain(
+      'release-candidate --tag="$TAG" --commit-sha="$GITHUB_SHA"',
+    );
+    expect(String(build?.run)).toContain(
+      "--github-token=env:GITHUB_TOKEN export --path=release",
+    );
   });
 
   it("publishes from a source-free OIDC and provenance bridge", () => {
@@ -108,18 +137,46 @@ describe("exact Dagger npm release bridge", () => {
       contents: "read",
       "id-token": "write",
     });
-    expect(publishSteps.map(actionName)).toEqual([DOWNLOAD, DAGGER]);
-    expect(mapping(publishSteps[1]?.with).module).toBe(
-      "github.com/hseshadr/privacy-core@$" +
-        "{{ github.event.workflow_run.head_sha }}",
+    expect(publishSteps.map(actionName)).toEqual([
+      DOWNLOAD,
+      DAGGER,
+      "run",
+      "run",
+    ]);
+    expect(mapping(publishSteps[1]?.with)).toEqual({ version: "0.21.8" });
+    const [, , context, release] = publishSteps;
+    // npm's provenance needs the runner's GitHub Actions context inside the
+    // Dagger container; the Dagger publisher validates every value.
+    for (const name of [
+      "GITHUB_EVENT_NAME",
+      "GITHUB_REF",
+      "GITHUB_REPOSITORY",
+      "GITHUB_REPOSITORY_ID",
+      "GITHUB_REPOSITORY_OWNER_ID",
+      "GITHUB_RUN_ATTEMPT",
+      "GITHUB_RUN_ID",
+      "GITHUB_SERVER_URL",
+      "GITHUB_SHA",
+      "GITHUB_WORKFLOW",
+      "GITHUB_WORKFLOW_REF",
+      "RUNNER_ENVIRONMENT",
+    ]) {
+      expect(String(context?.run)).toContain(`${name}: env.${name}`);
+    }
+    expect(mapping(release?.env)).toEqual({
+      HEAD_SHA: "$" + "{{ github.event.workflow_run.head_sha }}",
+    });
+    const command = String(release?.run);
+    expect(command).toContain(
+      '-m "github.com/hseshadr/privacy-core@$HEAD_SHA"',
     );
-    expect(String(mapping(publishSteps[1]?.with).args)).toContain(
-      "publish --candidate=release --expected-sha=$" +
-        "{{ github.event.workflow_run.head_sha }}",
+    expect(command).toContain(
+      'publish --candidate=release --expected-sha="$HEAD_SHA"',
     );
-    expect(String(mapping(publishSteps[1]?.with).args)).toContain(
+    expect(command).toContain(
       "--oidc-url=env:ACTIONS_ID_TOKEN_REQUEST_URL --oidc-token=env:ACTIONS_ID_TOKEN_REQUEST_TOKEN",
     );
+    expect(command).toContain("--github-context=github-context.json");
     expect(publishSteps.some((step) => actionName(step) === CHECKOUT)).toBe(
       false,
     );
