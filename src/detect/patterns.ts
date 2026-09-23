@@ -120,20 +120,65 @@ function wordClosingPrefixes(match: string): number[] {
 }
 
 /**
- * The single IBAN retry candidate: the prefix holding exactly the country's
- * registered number of characters. An unknown country has none. One candidate
- * per start — not one per group — is what keeps hostile IBAN-shaped input
- * linear with a small constant.
+ * IBAN retry candidates, longest first: the prefixes of a rejected `match`
+ * that close a word and pass mod-97 — at the country's registered ISO 13616
+ * length when the country is in `IBAN_LENGTHS`, or at any length from the
+ * 15-character minimum when it is not (bank-issued codes such as MA, NC or PF
+ * are outside the registry).
+ *
+ * A match holds only `[A-Z0-9]` and the whitespace the pattern's `\s?`
+ * accepts — ASCII controls/space below `0`, and NBSP and the Unicode spaces
+ * above `Z` — so "not alphanumeric" is exactly "whitespace", and tab- or
+ * NBSP-grouped IBANs are counted right.
+ *
+ * One linear pass: the BBAN's remainder is folded as the scan advances and the
+ * country code + check digits (which mod-97 reads last) are folded onto a copy
+ * at each word end, so every prefix costs O(1). Hostile IBAN-shaped input
+ * costs one pass per start, however many groups it has.
  */
-function ibanCountryPrefix(match: string): number[] {
-  const length = IBAN_LENGTHS[match.slice(0, 2)];
-  if (length === undefined) return [];
-  let seen = 0;
-  for (let end = 0; end < match.length; end++) {
-    if (match.charAt(end) !== " ") seen++;
-    if (seen === length) return end + 1 < match.length ? [end + 1] : [];
+function ibanCandidates(match: string): number[] {
+  const registered = IBAN_LENGTHS[match.slice(0, 2)];
+  const longest = registered ?? 34;
+  const out: number[] = [];
+  let value = 0;
+  let characters = 4;
+  for (let i = 4; i < match.length - 1 && characters < longest; i++) {
+    const code = match.charCodeAt(i);
+    if (code < 48 || code > 90) continue; // whitespace (see above)
+    value = foldIban(value, code);
+    characters++;
+    const next = match.charCodeAt(i + 1);
+    const closes = next < 48 || next > 90;
+    if (
+      closes &&
+      fitsIban(characters, registered) &&
+      withCountry(value, match)
+    ) {
+      out.unshift(i + 1);
+    }
   }
-  return [];
+  return out;
+}
+
+/** Fold one IBAN character (A=10 … Z=35), reducing only past 1e12 (< 2^53). */
+function foldIban(value: number, code: number): number {
+  const next = code >= 65 ? value * 100 + code - 55 : value * 10 + code - 48;
+  return next >= 1e12 ? next % 97 : next;
+}
+
+/** The registered length for a registry country; 15+ for any other. */
+function fitsIban(characters: number, registered: number | undefined): boolean {
+  return registered === undefined
+    ? characters >= 15
+    : characters === registered;
+}
+
+/** Whether a folded BBAN prefix passes mod-97 once the country part is appended. */
+function withCountry(value: number, match: string): boolean {
+  // Reduce first: four more folds multiply by up to 1e6, and 97e6 << 2^53.
+  let check = value % 97;
+  for (let k = 0; k < 4; k++) check = foldIban(check, match.charCodeAt(k));
+  return check % 97 === 1;
 }
 
 /** A regex recognizer, optionally gated by a checksum/structure accept-test. */
@@ -178,7 +223,7 @@ export const RULES: readonly Rule[] = [
     re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]){11,30}\b/g,
     accept: ibanValid,
     scan: "every-start",
-    shorter: ibanCountryPrefix,
+    shorter: ibanCandidates,
   },
   {
     type: "CARD",

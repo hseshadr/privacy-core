@@ -366,6 +366,62 @@ describe("the remaining format limits the review found", () => {
   });
 });
 
+/** A mod-97-valid IBAN for `country` with this BBAN (check digits computed). */
+function makeIban(country: string, bban: string): string {
+  const digits = `${bban}${country}00`.replace(/[A-Z]/g, (c) =>
+    String(c.charCodeAt(0) - 55),
+  );
+  let remainder = 0;
+  for (const ch of digits) remainder = (remainder * 10 + Number(ch)) % 97;
+  return `${country}${String(98 - remainder).padStart(2, "0")}${bban}`;
+}
+
+const grouped = (iban: string, sep: string) =>
+  iban.replace(/(.{4})(?=.)/g, `$1${sep}`);
+
+describe("an IBAN followed by more text is found for every country and separator", () => {
+  // Final review of 00d9e6c: the country-length retry had no candidate for a
+  // country missing from the ISO 13616 registry (MA, NC, PF and other
+  // bank-issued codes), and counted only " " as a separator although the
+  // pattern accepts any whitespace — so a tab- or NBSP-grouped IBAN followed
+  // by a word was retried at the wrong length and leaked.
+  const bban28 = "0110101234567890123456";
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    ["registry country, spaces", makeIban("GB", "WEST12345698765432"), " "],
+    ["registry country, tabs", makeIban("GB", "WEST12345698765432"), "\t"],
+    ["registry country, NBSP", makeIban("DE", "370400440532013000"), "\u00a0"],
+    [
+      "registry country, newlines",
+      makeIban("FR", "20041010050500013M02606"),
+      "\n",
+    ],
+    ["unknown country MA", makeIban("MA", bban28.slice(0, 24)), " "],
+    ["unknown country NC", makeIban("NC", "2004101005050001302606"), " "],
+    [
+      "unknown country PF, NBSP",
+      makeIban("PF", "2004101005050001302606"),
+      "\u00a0",
+    ],
+    ["unknown country XX, tabs", makeIban("XX", "1234567890123456"), "\t"],
+  ];
+
+  for (const [label, iban, sep] of cases) {
+    it(`finds a ${label} IBAN followed by a word`, () => {
+      const value = grouped(iban, sep);
+      for (const tail of [" ABCD", " REF 7", `${sep}EUR`]) {
+        const text = `IBAN ${value}${tail}`;
+        expect(leakedChars(text, value), JSON.stringify(text)).toBe("");
+      }
+    });
+  }
+
+  it("still finds the same IBANs standalone and compact", () => {
+    for (const [, iban] of cases) {
+      expect(valuesOf(`IBAN ${iban}.`, "IBAN"), iban).toEqual([iban]);
+    }
+  });
+});
+
 describe("the shorter-candidate retry stays sound and linear", () => {
   const gated = RULES.filter((rule) => rule.accept !== undefined);
 
@@ -396,23 +452,31 @@ describe("the shorter-candidate retry stays sound and linear", () => {
 
   it("scans 512 KiB of IBAN-shaped input without a per-start retry blow-up", () => {
     // Every `AB12`/`GB82` group starts an IBAN candidate. Re-testing ~7 shorter
-    // prefixes at each start made this ~25x slower than v0.2.2 (1.4-1.6 s on
-    // the browser thread); the country-length table allows at most ONE retry
-    // candidate per start. Measured ~130-215 ms (400-600 ms under coverage
-    // instrumentation); the unbounded retry took 1.2-1.6 s uninstrumented.
+    // prefixes at each start made this ~25x slower than v0.2.2 (1.2-1.6 s on
+    // the browser thread); the single-pass candidate scan keeps it near the
+    // cost of any other hostile shape (~130-270 ms uninstrumented).
+    //
+    // Coverage instrumentation slows these tight loops several-fold, and CI
+    // runners vary, so the bound is RELATIVE: best-of-three against a
+    // same-size card-shaped workload measured in the same process. Measured
+    // under coverage: the old per-group retry ran ~11x that workload, the fix
+    // ~1-4.5x (~1.4x uninstrumented).
     const size = 512 * 1024;
-    for (const unit of ["AB12 ", "GB82 A1 ", "ZZ99 99 "]) {
-      const hostile = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      // Best of three: the bound is about the algorithm, not a busy runner.
-      let best = Number.POSITIVE_INFINITY;
+    const best = (unit: string) => {
+      const input = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      let fastest = Number.POSITIVE_INFINITY;
       for (let run = 0; run < 3; run++) {
         const started = performance.now();
-        detect(hostile);
-        best = Math.min(best, performance.now() - started);
+        detect(input);
+        fastest = Math.min(fastest, performance.now() - started);
       }
-      expect(best, unit).toBeLessThan(1000);
+      return fastest;
+    };
+    const reference = best("4111 1111 1111 1111 12 ");
+    for (const unit of ["AB12 ", "GB82 A1 ", "AB12\t", "MA64 0110 "]) {
+      expect(best(unit) / reference, unit).toBeLessThan(7);
     }
-  });
+  }, 60_000);
 
   it("scans 64 KiB of rejected-then-retried candidates in well under 1.5s", () => {
     // Each unit forces a checksum rejection followed by a retry, or a gated

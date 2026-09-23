@@ -46,15 +46,15 @@ function rulesetFingerprint(): string {
  *   SSN gated on `ssnValid`; NANP phone (unrestricted parenthesized branch,
  *   `2-9`-gated bare branch, both ending at `(?!\d)`); CARD as a print-layout
  *   grammar scanned at every start with word-closing retries, beside the
- *   v0.2.2 loose rule; IBAN scanned at every start with one country-length
- *   retry; ROUTING/ACCOUNT with a named `value` group (ACCOUNT 6-17
- *   digits), ordered before SSN. (Recomputed three times before 0.3.0 shipped, after
+ *   v0.2.2 loose rule; IBAN scanned at every start with mod-97-valid,
+ *   word-closing retries (registry length, or 15+ for an unregistered country); ROUTING/ACCOUNT with a named `value` group (ACCOUNT 6-17
+ *   digits), ordered before SSN. (Recomputed four times before 0.3.0 shipped, after
  *   the pre-release security reviews — "2" was never sealed into a published
  *   receipt with any other ruleset.)
  */
 const RULESET_GOLDENS: Readonly<Record<string, string>> = {
   "1": "sha256:3b6b79ace54f87e6ffb25c7a7567a621bdae41007cc614d302b390b891e058c6",
-  "2": "sha256:cb11c037977126ef1648c7b7b2324391351357467025bb5d16c891ab82859158",
+  "2": "sha256:8129e8f323e666a0639030073d666f6ed2dcd74ab9cb036d29de381577159500",
 };
 
 describe("detector version (which ruleset screened a sealed receipt)", () => {

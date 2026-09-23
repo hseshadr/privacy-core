@@ -19,21 +19,6 @@ function dictSpans(
   return out;
 }
 
-/** `[A-Za-z0-9_]` by char code — exactly what JavaScript's non-`u` `\b` treats as a word. */
-const ASCII_WORD = new Uint8Array(128);
-for (const ch of "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_") {
-  ASCII_WORD[ch.charCodeAt(0)] = 1;
-}
-
-/**
- * Whether `text[i]` is a `\b` word character. A table lookup so the hot retry
- * loop allocates nothing; a non-ASCII or out-of-range position reads as
- * `undefined`, i.e. not a word character — the same answer `\b` gives.
- */
-function isWordAt(text: string, i: number): boolean {
-  return ASCII_WORD[text.charCodeAt(i)] === 1;
-}
-
 /** The rule's pattern anchored to match a WHOLE candidate string. */
 function anchored(rule: Rule): RegExp {
   return new RegExp(`^(?:${rule.re.source})$`, rule.re.flags.replace("g", ""));
@@ -47,13 +32,15 @@ function anchored(rule: Rule): RegExp {
  * The regex engine only reports the longest match at a position, so a valid
  * card or IBAN followed by more digits/letters (`4111 1111 1111 1111 12/27`,
  * `GB82 WEST 1234 5698 7654 32 ABCD`) used to be matched too long, fail its
- * checksum, and leak whole. A candidate must (a) end on a word boundary in the
- * FULL text — so a card is never carved out of a longer digit run — and (b) be
- * a complete match of the rule's own pattern.
+ * checksum, and leak whole. A candidate must (a) close a word — the rule's
+ * `shorter` only offers prefixes followed by a separator INSIDE the match, so a
+ * card is never carved out of a longer digit run — and (b) be a complete match
+ * of the rule's own pattern.
  *
  * Deterministic and bounded: the rule names its candidates (every word-closing
- * prefix of a ≤ 23-character card; the single country-length prefix of an
- * IBAN), so this is a small constant per rejection.
+ * prefix of a ≤ 23-character card; for an IBAN only the word-closing prefixes
+ * that already pass mod-97, found in one pass), so this is a small constant per
+ * rejection.
  */
 function retryShorter(
   text: string,
@@ -66,7 +53,6 @@ function retryShorter(
   const start = match.index;
   for (const length of shorter(match[0])) {
     const end = start + length;
-    if (!isWordAt(text, end - 1) || isWordAt(text, end)) continue;
     const value = text.slice(start, end);
     if (whole.test(value) && accept(value)) {
       return { type: rule.type, value, start, end };

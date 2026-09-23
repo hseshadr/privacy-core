@@ -32,30 +32,33 @@ export function ssnValid(raw: string): boolean {
   return d.slice(3, 5) !== "00" && d.slice(5) !== "0000";
 }
 
+const IBAN_SHAPE = /^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/;
+
 /**
  * ISO 13616 IBAN mod-97 check. Letters count as two digits (`A` = 10 …
- * `Z` = 35) after the country code and check digits are moved to the end; the
- * remainder is folded one character at a time so no expanded digit string is
- * built — IBAN candidates are tested at every group start of hostile input.
+ * `Z` = 35) once the country code and check digits are moved to the end. The
+ * rearrangement is read by index and the remainder folded as it goes (reduced
+ * only past 1e12, far below 2^53), so no expanded digit string is built — IBAN
+ * candidates are tested at every group start of hostile input.
  */
 export function ibanValid(raw: string): boolean {
   const s = raw.replace(/\s+/g, "").toUpperCase();
-  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(s)) return false;
-  const rearranged = s.slice(4) + s.slice(0, 4);
-  let remainder = 0;
-  for (let i = 0; i < rearranged.length; i++) {
-    const c = rearranged.charCodeAt(i);
-    remainder =
-      c >= 65
-        ? (remainder * 100 + c - 55) % 97
-        : (remainder * 10 + c - 48) % 97;
+  if (!IBAN_SHAPE.test(s)) return false;
+  let value = 0;
+  for (let i = 4; i < s.length + 4; i++) {
+    const code = s.charCodeAt(i < s.length ? i : i - s.length);
+    value = code >= 65 ? value * 100 + code - 55 : value * 10 + code - 48;
+    if (value >= 1e12) value %= 97;
   }
-  return remainder === 1;
+  return value % 97 === 1;
 }
 
 /**
- * IBAN length per country (ISO 13616 / SWIFT IBAN registry): an IBAN from a
- * given country always has exactly this many characters, spaces excluded.
+ * IBAN length per country for the 89 countries in the ISO 13616 / SWIFT IBAN
+ * registry: an IBAN from one of them always has exactly this many characters,
+ * spaces excluded. Deliberately registry-only: codes some banks issue outside
+ * it (MA, NC, PF, …) have no single agreed length, so the IBAN retry treats a
+ * country missing here as "any length from 15" rather than guessing one.
  */
 export const IBAN_LENGTHS: Readonly<Record<string, number>> = {
   AD: 24,
