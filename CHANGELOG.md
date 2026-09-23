@@ -23,19 +23,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     could not do the job; every quantifier stays un-nested, so the pattern is
     linear and a ReDoS test pins that.
   - **SSN now matches `123 45 6789` and unseparated `123456789`**, not only the
-    dashed form. All three are gated on the SSA issuance rules (new `ssnValid`:
-    area not `000`/`666`/`9xx`, group not `00`, serial not `0000`), which is what
-    makes a bare 9-digit run safe to recognize — group `00` is never issued, so
-    ABA routing numbers are excluded by construction.
+    dashed form. Only the unseparated form is gated on the SSA issuance rules
+    (new `ssnValid`: area not `000`/`666`/`9xx`, group not `00`, serial not
+    `0000`), which is what makes a bare 9-digit run safe to recognize — group
+    `00` is never issued, so ABA routing numbers are excluded by construction.
+    Dashed and spaced values are redacted whatever their digits, exactly as the
+    dashed form was in 0.2.2.
   - **Phone now matches the NANP set**, not only `(415) 555-0132`: `-`, `.` or
-    space separators, optional parentheses, optional `+1`. Area and exchange must
-    start `2-9`. An unformatted 10-digit run is still deliberately NOT matched.
+    space separators, optional parentheses, optional `+1` (also glued to the
+    parenthesis: `+1(415) 555-0132`). Without parentheses, area and exchange must
+    start `2-9`; a parenthesized area code takes any digits and may be followed
+    by any single whitespace character, as in 0.2.2. An unformatted 10-digit run
+    is still deliberately NOT matched.
+- **A checksum-rejected match is now retried shorter instead of leaking whole.**
+  The regex engine reports only the longest match at a position, so a valid card
+  or IBAN followed by more digits or an uppercase word
+  (`4111 1111 1111 1111 12/27`, `4111 1111 1111 1111 123 exp…`,
+  `GB82 WEST 1234 5698 7654 32 ABCD`) was matched too long, failed Luhn/mod-97,
+  and went out verbatim. This predates 0.3.0. After a rejection, `detect()` now
+  retries shorter candidates from the same start, longest first; a candidate
+  must be a complete match of the rule's own pattern and end on a word boundary
+  in the full text, so a card is never carved out of a longer digit run. The
+  retry is bounded by the pattern's fixed maximum length (≤ 38 chars for CARD,
+  ≤ 64 for IBAN), so detection stays linear; a 64 KiB adversarial test pins it.
+
+### Security
+
+- **The 0.3.0 widening no longer narrows anything 0.2.2 redacted.** A
+  pre-release security review ran the v0.2.2 and 0.3.0 `src/detect` trees side
+  by side and found the first 0.3.0 candidate had quietly STOPPED redacting
+  values 0.2.2 caught. Both are fixed before release, each with a failing
+  regression test first:
+  - the `ssnValid` issuance gate had been applied to the dashed and spaced SSN
+    forms too, so ITINs (`912-70-1234`, `987-65-4321` — real taxpayer IDs) and
+    never-issued `666-12-3456`, `000-…`, `123-00-4567` values leaked. The gate
+    now applies only to the unseparated 9-digit form;
+  - the NANP phone pattern had dropped `+1(415) 555-0132` and `1(415) 555-0132`
+    (country code glued to the parenthesis), `(415)` followed by NBSP, tab or
+    newline (0.2.2 allowed `\s?` there), and parenthesized numbers whose area or
+    exchange starts `0`/`1` (`(123) 456-7890`, `(415) 155-0132`). All match
+    again, and every shape the widened pattern gained is kept.
+
+  A new recall-floor test (`test/v022-recall-floor.test.ts`) now makes this
+  class of regression fail the gate: it carries a frozen, verbatim copy of the
+  v0.2.2 PHONE/SSN/EMAIL/CARD/IBAN recognizers and checksums, asserts every value
+  v0.2.2 redacted in its own test corpus is still redacted, and sweeps a
+  generated corpus asserting every character v0.2.2 matched is still covered.
+- **Release dispatch no longer interpolates the `tag` input into shell.**
+  `release-candidate.yml` passed `${{ inputs.tag }}` to
+  `dagger/dagger-for-github`'s `args`, which that action templates into a bash
+  script — a tag containing `'` ran arbitrary shell in the job that produces the
+  release artifact, which the publisher only checks against a `SHA256SUMS` from
+  the same artifact. The tag now reaches shell only as `$TAG` via `env:`, a first
+  step rejects anything but `^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`,
+  the Dagger `release_candidate` function re-checks it, and the action is used
+  only to put the Dagger CLI on `PATH` (both `release-candidate.yml` and
+  `publish.yml` call `dagger` from their own `run:` step with quoted values). A
+  workflow test now fails if any `inputs.*` or `github.event` expression reaches
+  a `run:` script or an action's shell-templated `args`/`call`/`shell`/`check`.
+- **The Dagger npm publisher can now actually produce provenance.** It ran
+  `npm publish --provenance` in a container whose only environment was the OIDC
+  request URL/token, so npm 11.13 (bundled with the pinned `node:24.16.0` image)
+  could not detect GitHub Actions and would have failed with
+  `EUSAGE: Automatic provenance generation not supported for provider: null` —
+  and skipped the trusted-publishing token exchange. `publish.yml` now records
+  the run's GitHub Actions context (`GITHUB_WORKFLOW_REF`, `GITHUB_REPOSITORY`,
+  `GITHUB_SHA`, `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_SERVER_URL`,
+  `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_REPOSITORY_ID`,
+  `GITHUB_REPOSITORY_OWNER_ID`, `GITHUB_WORKFLOW`, `RUNNER_ENVIRONMENT`) to a file
+  outside the candidate, and the Dagger `publish` function validates every value
+  — this repository, `github.com`, a GitHub-hosted runner, and a workflow ref of
+  exactly `.github/workflows/publish.yml` (the file npm trusted publishing is
+  bound to, whose name is unchanged) — before setting it, plus
+  `GITHUB_ACTIONS=true`/`CI=true`, in the publisher container. Covered by the
+  Dagger module's test suite.
+- **The pnpm supply-chain cooldown is declared again.** `minimumReleaseAge: 1440`
+  was removed in #32 ("replace the artificial 24-hour registry wait … with an
+  explicit reviewed build allowlist") and a test asserted its absence — but pnpm
+  11.5.0 defaults to 1440 anyway, so the cooldown never actually stopped
+  applying; only the repository stopped stating it. It is restored explicitly
+  (a frozen install of the pinned toolchain passes with it) and
+  `test/registry-maturity.test.ts` now requires it, with no exclusion list and no
+  non-strict escape hatch.
 
 ### Changed
 
 - **Egress receipts now carry `detector_version: "2"`.** `DETECTOR_VERSION` is
   bumped from `"1"` because the detection ruleset changed (the Unicode email,
-  spaced/unseparated SSN and NANP phone recognizers under *Fixed*), so a 0.3.0
+  spaced/unseparated SSN and NANP phone recognizers under *Fixed*, and the SSN
+  and phone narrowings under *Security* fixed before release), so a 0.3.0
   receipt can be told apart from one sealed by 0.2.x. This is a wire-visible
   change: a verifier that compares `detector_version` against an allow-list must
   accept `"2"`. Receipts sealed with a caller-pinned `detectorVersion` are
@@ -63,7 +139,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the developer sections) moved below the fold unchanged.
 - **The browser e2e now proves the widened formats in real Chromium.**
   `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
-  newly-covered format, and the Playwright suite asserts each raw value *and its
+  newly-covered format — including a dashed ITIN, `+1(415) 555-0199` and a card
+  followed by its expiry, the shapes the security review found leaking — and
+  the Playwright suite asserts each raw value *and its
   identifying fragments* are absent from both the intercepted request body and
   the rendered wire pane, requires the placeholders those recognizers must mint
   (non-vacuity), and fails on any console error or warning during the flow. A
@@ -105,7 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - the pinned public key is compared case-insensitively, so the same key written in
     upper- and lower-case hex no longer reads as a signer mismatch.
 
-  The receipt tests assert each rejection by its own subclass and code.
+  The receipt tests assert each rejection by its own subclass and code, and
+  `test/receipt-compat.test.ts` pins two receipts sealed by the published
+  `@edgeproc/privacy-core@0.2.2` (on `@edgeproc/avow@0.1.0`) with a fixed seed:
+  they verify under `^0.4.1`, and re-sealing the same decision today produces the
+  byte-identical payload hash and signature.
 
 ## [0.2.2] — 2026-07-25
 
