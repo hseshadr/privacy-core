@@ -336,11 +336,25 @@ class PrivacyCore:
         version = tag.removeprefix("v")
         archive = f"/candidate/edgeproc-privacy-core-{version}.tgz"
         built = self._dependencies(source).with_exec(["pnpm", "build"])
-        built = built.with_exec(["mkdir", "-p", "/candidate"]).with_exec(
+        built = self._candidate_root(built).with_exec(
             ["npm", "pack", "--ignore-scripts", "--pack-destination", "/candidate"]
         )
         built = built.with_exec(self._artifact_command(archive, tag))
         return built.with_exec(self._checksum_command(archive))
+
+    @staticmethod
+    def _candidate_root(built: dagger.Container) -> dagger.Container:
+        """Create `/candidate` as root, then hand it to the runtime user.
+
+        `_node` drops to 65532, which cannot create a directory directly under
+        `/`. Same root-then-drop shape the Playwright cache already uses.
+        """
+        return (
+            built.with_user("0:0")
+            .with_exec(["mkdir", "-p", "/candidate"])
+            .with_exec(["chown", "65532:65532", "/candidate"])
+            .with_user("65532:65532")
+        )
 
     @staticmethod
     def _artifact_command(archive: str, tag: str) -> list[str]:
