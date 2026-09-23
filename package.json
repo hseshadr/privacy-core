@@ -5,14 +5,13 @@
     "access": "public"
   },
   "type": "module",
-  "description": "A browser-side privacy boundary for LLM calls: redact on-device, send only placeholders, rehydrate locally — enforced by a type-checked Egress Guard.",
+  "description": "A browser-side structured-identifier redaction boundary for LLM calls: detects cards, IBANs, SSNs, emails, US phones and labeled account/routing numbers on-device, sends only placeholders, rehydrates locally — enforced by a type-checked Egress Guard. Names and free-text PII are not detected.",
   "keywords": [
     "pii",
     "pii-redaction",
     "pii-detection",
     "privacy",
     "data-masking",
-    "anonymization",
     "llm",
     "llm-security",
     "prompt-privacy",
