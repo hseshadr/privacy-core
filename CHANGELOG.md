@@ -71,12 +71,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   must be a complete match of the rule's own pattern and end on a word boundary
   in the full text, so a card is never carved out of a longer digit run. Each
   rule names its candidates: every word-closing prefix of a print-layout card
-  (≤ 23 chars), and for an IBAN the one prefix at the country's registered
-  ISO 13616 length (none for an unknown country). Detection stays linear: a
-  64 KiB adversarial test, and a 512 KiB IBAN-shaped one that an earlier
-  per-group retry had made ~25x slower (1.2–1.6 s, now ~130–215 ms), pin it.
-  `ibanValid` now folds mod-97 character by character instead of building an
-  expanded digit string — same result, a fraction of the work.
+  (≤ 23 chars), and for an IBAN only the word-closing prefixes that already
+  pass mod-97 — at the country's registered ISO 13616 length (89 countries in
+  `IBAN_LENGTHS`), or at 15+ characters for a country outside the registry
+  (bank-issued codes such as `MA`, `NC`, `PF`) — found in one pass that folds
+  the remainder as it goes. Any whitespace the pattern accepts counts as a
+  separator, so tab- and NBSP-grouped IBANs are retried at the right length.
+  (A final review of the first table-only version found both gaps: an
+  unregistered country followed by text leaked ~4% of cases, a tab/NBSP-grouped
+  IBAN followed by a word ~95%; both are now 0 of 1,860.) Detection stays
+  linear: a 64 KiB adversarial test, and a 512 KiB IBAN-shaped one that an
+  earlier per-group retry had made ~25x slower (1.2–1.6 s, now ~155–245 ms),
+  pin it. `ibanValid` now folds mod-97 without building an expanded digit
+  string — same result, a fraction of the work.
 - **Overlapping spans are merged into their union instead of dropped.** When
   two rules matched overlapping text, `detect()` kept the earlier/longer span
   and DROPPED the other, uncovering whatever the dropped span held beyond the
@@ -88,6 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Email detection is no longer quadratic.** v0.2.2's
+  `\b[\w.+-]+@[\w-]+\.[\w.-]+\b` retried its unbounded local part from every
+  start of a run with no `@`, so a `1234-1234-…` run took ~0.6 s at 32k
+  characters, ~2.5 s at 64k and ~10 s at 131k (quadrupling per doubling;
+  minutes at the 512 KiB input cap) on the browser thread. The 0.3.0 email
+  recognizer's lookbehind stops a match starting mid-run, and all of 0.3.0's
+  `detect()` takes ~90 ms on the same 131k input.
 - **The 0.3.0 widening no longer narrows anything 0.2.2 redacted.** A
   pre-release security review ran the v0.2.2 and 0.3.0 `src/detect` trees side
   by side and found the first 0.3.0 candidate had quietly STOPPED redacting

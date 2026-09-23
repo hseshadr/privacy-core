@@ -40,8 +40,9 @@ flowchart TD
    loose 13–19-digit rule, scanned the v0.2.2 way, for every other layout. IBAN
    is also tried at every start. When a validator rejects a greedy match (a
    card followed by `12/27`), the rule's shorter candidates from the same start
-   are retried — word-closing prefixes for a card, the one ISO 13616
-   country-length prefix for an IBAN — each ending on a word boundary. Overlapping spans are MERGED into
+   are retried — word-closing prefixes for a card; for an IBAN, the
+   word-closing prefixes that pass mod-97 at the country's ISO 13616 length
+   (any length from 15 for a country outside the registry). Overlapping spans are MERGED into
    their union — the earlier span's type is kept and its value becomes the
    union's exact text — so an overlap can only widen what is redacted, never
    uncover a neighbour. On an exact tie, `RULES` order picks the type, which is
