@@ -97,10 +97,20 @@ function v022Matches(text: string): Array<[string, number, number]> {
   return out;
 }
 
+/**
+ * Whether the character at `i` identifies anything. v0.2.2's greedy CARD rule
+ * often swallowed the separator AFTER a card (`4242 4242 4242 4242 ` + `for`);
+ * a trailing space or dash carries no identity, so only letters and digits are
+ * held to the floor.
+ */
+const IDENTIFYING = /[\p{L}\p{N}]/u;
+
 /** Characters inside a v0.2.2 match that the current detector leaves bare. */
 function narrowings(text: string): string[] {
   const spans = detect(text);
-  const covered = (i: number) => spans.some((s) => s.start <= i && i < s.end);
+  const covered = (i: number) =>
+    !IDENTIFYING.test(text.charAt(i)) ||
+    spans.some((s) => s.start <= i && i < s.end);
   const found: string[] = [];
   for (const [type, start, end] of v022Matches(text)) {
     for (let i = start; i < end; i++) {
@@ -181,6 +191,118 @@ function generatedCorpus(): string[] {
   ];
 }
 
+/**
+ * Deterministic PRNG (a 32-bit LCG). Seeded, so the multi-identifier corpus is
+ * the same on every run and every machine — a failure is reproducible.
+ */
+function lcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+/**
+ * Two or three values per line, the way real text carries them: a phone next
+ * to an SSN, a reference number before a card, two SSNs in a list.
+ *
+ * A single identifier per string (as `generatedCorpus` builds) cannot see a
+ * recognizer that grabs characters belonging to its NEIGHBOUR. That is exactly
+ * how the first 0.3.0 checksum retry leaked: in `3852631216 760-04-7660` it
+ * carved a Luhn-valid "card" out of the reference number plus the SSN's area
+ * code, the overlap pass dropped the SSN, and `-04-7660` went out bare.
+ * Neighbours include digit runs v0.2.2 never redacted (reference numbers,
+ * spaced SSNs, bare phones), because those are what a greedy rule absorbs.
+ */
+interface Planted {
+  readonly text: string;
+  /** [start, end) of every IDENTIFIER in `text` (neighbour noise excluded). */
+  readonly identifiers: ReadonlyArray<readonly [number, number]>;
+}
+
+function multiIdentifierCorpus(count: number): Planted[] {
+  const rnd = lcg(0x5eed_0302);
+  const digits = (n: number) =>
+    Array.from({ length: n }, () => String(Math.floor(rnd() * 10))).join("");
+  const pick = <T>(items: readonly T[]): T => {
+    const item = items[Math.floor(rnd() * items.length)];
+    if (item === undefined) throw new Error("empty pick");
+    return item;
+  };
+  const gaps = ["", " ", "\u00a0", "\t", "\n"];
+  const identifiers: ReadonlyArray<() => string> = [
+    () => `${digits(3)}-${digits(2)}-${digits(4)}`,
+    () =>
+      `${pick(["", "+1", "1", "+1 "])}(${digits(3)})${pick(gaps)}${digits(3)}-${digits(4)}`,
+    () =>
+      pick(["4111 1111 1111 1111", "4242424242424242", "5555-5555-5555-4444"]),
+    () => pick(["378282246310005", "3782 822463 10005", "6011111111111117"]),
+    () => pick(["GB82 WEST 1234 5698 7654 32", "DE89370400440532013000"]),
+    () => pick(["ada.lovelace@example.com", "x_9@my-host.example"]),
+  ];
+  // Text that is NOT an identifier but sits next to one: what a greedy rule
+  // absorbs. Only the identifiers are held to the floor.
+  const noise: ReadonlyArray<() => string> = [
+    () => digits(1 + Math.floor(rnd() * 12)),
+    () => `${digits(3)} ${digits(2)} ${digits(4)}`,
+    () =>
+      `${2 + Math.floor(rnd() * 8)}${digits(2)}-${2 + Math.floor(rnd() * 8)}${digits(2)}-${digits(4)}`,
+    () => `#${digits(1)}`,
+  ];
+  const joiners = [" ", ", ", "\n", " - "];
+  const corpus: Planted[] = [];
+  for (let i = 0; i < count; i++) {
+    const size = rnd() < 0.5 ? 2 : 3;
+    const parts: Array<{ value: string; identifier: boolean }> = [];
+    for (let k = 0; k < size; k++) {
+      // At least one identifier per line; the rest are identifiers or noise.
+      const identifier = k === 0 || rnd() < 0.6;
+      parts.push({
+        value: identifier ? pick(identifiers)() : pick(noise)(),
+        identifier,
+      });
+    }
+    // Shuffle so the identifier is as often second or third as first.
+    parts.sort(() => rnd() - 0.5);
+    let text = "";
+    const planted: Array<readonly [number, number]> = [];
+    parts.forEach((part, k) => {
+      if (k > 0) text += pick(joiners);
+      if (part.identifier) {
+        planted.push([text.length, text.length + part.value.length]);
+      }
+      text += part.value;
+    });
+    corpus.push({ text, identifiers: planted });
+  }
+  return corpus;
+}
+
+/**
+ * Characters of a planted identifier that v0.2.2 redacted and the current
+ * detector leaves bare. Noise v0.2.2 happened to swallow (its greedy CARD rule
+ * glued neighbouring digit runs into Luhn-valid junk) is not an identifier and
+ * is not held to the floor; every identifier character is.
+ */
+function plantedNarrowings({ text, identifiers }: Planted): string[] {
+  const spans = detect(text);
+  const covered = (i: number) =>
+    !IDENTIFYING.test(text.charAt(i)) ||
+    spans.some((s) => s.start <= i && i < s.end);
+  const planted = (i: number) => identifiers.some(([a, b]) => a <= i && i < b);
+  const found: string[] = [];
+  for (const [type, start, end] of v022Matches(text)) {
+    for (let i = start; i < end; i++) {
+      if (planted(i) && !covered(i)) {
+        found.push(`${type} ${JSON.stringify(text.slice(start, end))}`);
+        break;
+      }
+    }
+  }
+  return found;
+}
+
 describe("v0.2.2 recall floor", () => {
   it("still redacts every value v0.2.2 redacted in its own corpus", async () => {
     for (const [type, value] of V022_POSITIVES) {
@@ -198,5 +320,20 @@ describe("v0.2.2 recall floor", () => {
     const oracleHits = corpus.reduce((n, t) => n + v022Matches(t).length, 0);
     expect(oracleHits).toBeGreaterThan(1500);
     expect(corpus.flatMap(narrowings)).toEqual([]);
+  });
+
+  it("covers every character v0.2.2 matched when identifiers sit side by side", () => {
+    const corpus = multiIdentifierCorpus(20_000);
+    const oracleHits = corpus.reduce(
+      (n, line) => n + v022Matches(line.text).length,
+      0,
+    );
+    expect(oracleHits).toBeGreaterThan(20_000);
+    const found = corpus.flatMap((line) =>
+      plantedNarrowings(line).map(
+        (leak) => `${leak} in ${JSON.stringify(line.text)}`,
+      ),
+    );
+    expect(found.slice(0, 10), `${found.length} narrowings`).toEqual([]);
   });
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { RULES } from "../src/detect/patterns.js";
-import { detect, type EntityType } from "../src/index.js";
+import {
+  detect,
+  type EntityType,
+  redactForEgress,
+  rehydrate,
+  Vault,
+} from "../src/index.js";
 
 /**
  * Regressions found by the 0.3.0 security review, which ran the v0.2.2 and the
@@ -170,20 +176,148 @@ describe("a checksum-rejected match is retried shorter from the same start", () 
   });
 });
 
+/** Every identifier character in `text` must be inside some detected span. */
+function allCovered(text: string, values: readonly string[]): string[] {
+  return values
+    .map((value) => [value, leakedChars(text, value)] as const)
+    .filter(([, leaked]) => leaked !== "")
+    .map(([value, leaked]) => `${value} leaked ${JSON.stringify(leaked)}`);
+}
+
+describe("overlapping spans merge into their union instead of dropping", () => {
+  // Re-review of b6aea7d: the retry carved a Luhn-valid "card" out of a
+  // reference number plus the next SSN's area code, and the overlap pass then
+  // DROPPED the SSN span, so its tail went out bare. Coverage must be the
+  // union of every rule's matches — an overlap may never uncover a character.
+  const cases = [
+    ["3852631216 760-04-7660", ["760-04-7660"]],
+    ["896 38 9043 725-71-9450", ["725-71-9450"]],
+    ["$123 45 6789", ["123 45 6789"]],
+    ["$1(747)\t712-1349", ["(747)\t712-1349"]],
+    [
+      "(144).076-2191 4111-1111-1111-1111",
+      ["(144).076-2191", "4111-1111-1111-1111"],
+    ],
+  ] as const;
+
+  for (const [text, values] of cases) {
+    it(`covers every identifier in ${JSON.stringify(text)}`, () => {
+      expect(allCovered(text, values)).toEqual([]);
+    });
+  }
+
+  it("keeps the earlier span's type and the exact union text as the value", () => {
+    const spans = detect("Total $123 45 6789 due");
+    expect(spans).toEqual([
+      { type: "AMOUNT", value: "$123 45 6789", start: 6, end: 18 },
+    ]);
+  });
+
+  it("round-trips a merged span through the vault", async () => {
+    const vault = new Vault();
+    const text = "Ref 3852631216 760-04-7660 and $123 45 6789 on file.";
+    const pending = await redactForEgress(text, vault);
+    for (const leak of ["7660", "04-7660", "45 6789", "6789"]) {
+      expect(pending.redactedText).not.toContain(leak);
+    }
+    expect(rehydrate(pending.redactedText, vault, pending.vaultRef)).toBe(text);
+  });
+});
+
+describe("a card preceded by another digit group is still found", () => {
+  for (const text of [
+    "(415) 555-0132 4111 1111 1111 1111",
+    "SSN 123-45-6789 4111 1111 1111 1111",
+    "#2 4111 1111 1111 1111",
+    "Ref 12 4111 1111 1111 1111",
+    "Order 7 4111-1111-1111-1111 paid",
+    "code 0132 4242 4242 4242 4242",
+  ]) {
+    it(`finds the card in ${JSON.stringify(text)}`, () => {
+      const card = text.match(/4[12]\d\d([ -])\d{4}\1\d{4}\1\d{4}/)?.[0];
+      if (card === undefined) throw new Error("fixture bug");
+      expect(leakedChars(text, card)).toBe("");
+    });
+  }
+
+  it("recognizes the card layouts people actually print", () => {
+    for (const card of [
+      "4111111111111111",
+      "4111 1111 1111 1111",
+      "4111-1111-1111-1111",
+      "3782 822463 10005", // Amex 4-6-5
+      "3782-822463-10005",
+      "3056 930902 5904", // Diners 4-6-4
+      "4222 2222 2222 2", // 13-digit Visa
+      "6200 0000 0000 0000 000", // 19 digits (4-4-4-4-3)
+    ]) {
+      expect(valuesOf(`Card ${card} on file.`, "CARD"), card).toEqual([card]);
+    }
+  });
+
+  it("does not glue unrelated digit groups into a card", () => {
+    // Neither is 4-digit grouped with one consistent separator, nor a single
+    // unseparated run — the shapes the old `(?:\d[ -]?){13,19}` swallowed.
+    expect(valuesOf("Ref 3852631216 7600 47660", "CARD")).toEqual([]);
+    expect(valuesOf("Card 4111 1111-1111 1111 on file", "CARD")).toEqual([]);
+  });
+});
+
+describe("the remaining format limits the review found", () => {
+  it("redacts a phone number glued to an extension", () => {
+    expect(valuesOf("Call 415-555-0132x12 today", "PHONE")).toEqual([
+      "415-555-0132",
+    ]);
+    expect(valuesOf("Call (415) 555-0132ext. 7", "PHONE")).toEqual([
+      "(415) 555-0132",
+    ]);
+    // Still never the middle of a longer digit run.
+    expect(valuesOf("Ref 415-555-01329 filed", "PHONE")).toEqual([]);
+  });
+
+  it("redacts SSNs written with any one consistent separator", () => {
+    for (const ssn of [
+      "123.45.6789",
+      "123\u00a045\u00a06789",
+      "123\u201345\u20136789", // en dash
+      "123\u201445\u20146789", // em dash
+      "123\u201045\u20106789", // hyphen
+      "123\u221245\u22126789", // minus sign
+      "912-70-1234",
+    ]) {
+      expect(valuesOf(`SSN ${ssn} on file`, "SSN"), ssn).toEqual([ssn]);
+    }
+    // Mixed separators are not an SSN shape.
+    expect(valuesOf("Part 123-45.6789 shipped", "SSN")).toEqual([]);
+  });
+
+  it("redacts long labelled account numbers", () => {
+    for (const account of ["123456", "1234567890123", "12345678901234567"]) {
+      expect(
+        valuesOf(`Account number: ${account} debited`, "ACCOUNT"),
+        account,
+      ).toEqual([account]);
+    }
+    // Five digits or fewer collide with years and amounts, which the
+    // residual guard would then refuse to send; 18+ is not a bank account.
+    expect(valuesOf("Account number: 20260 debited", "ACCOUNT")).toEqual([]);
+    expect(
+      valuesOf("Account number: 123456789012345678 debited", "ACCOUNT"),
+    ).toEqual([]);
+  });
+});
+
 describe("the shorter-candidate retry stays sound and linear", () => {
   const gated = RULES.filter((rule) => rule.accept !== undefined);
 
-  it("only runs on gated patterns shaped \\b + bounded unit repetition + \\b", () => {
-    // retryShorter's early exit relies on this shape: a word-closing prefix of
-    // a match is itself a match until it drops below the minimum length.
+  it("only runs on gated patterns bounded by \\b, whose whole match is the value", () => {
     expect(gated.map((rule) => rule.type)).toEqual(["IBAN", "CARD", "SSN"]);
     for (const rule of gated) {
       expect(rule.re.source.startsWith("\\b"), rule.type).toBe(true);
       expect(rule.re.source.endsWith("\\b"), rule.type).toBe(true);
-      // No capture group: the whole match is the value that gets re-tested.
-      expect(new RegExp(`${rule.re.source}|`).exec("")?.length, rule.type).toBe(
-        1,
-      );
+      // The retry re-tests the whole match, so a gated rule must not carve
+      // its value out of a named `value` group the way the label rules do.
+      expect(rule.re.source.includes("(?<value>"), rule.type).toBe(false);
     }
   });
 
@@ -197,7 +331,8 @@ describe("the shorter-candidate retry stays sound and linear", () => {
   });
 
   it("scans 64 KiB of rejected-then-retried candidates in well under 1.5s", () => {
-    // Each unit forces a checksum rejection followed by a retry. A blow-up
+    // Each unit forces a checksum rejection followed by a retry, or a gated
+    // candidate at every group start. A blow-up
     // guard, not a benchmark: the bounded retry costs tens of milliseconds per
     // input here (a few hundred under coverage instrumentation on a loaded
     // runner), while a super-linear retry never finishes on 64 KiB at all.
@@ -208,6 +343,12 @@ describe("the shorter-candidate retry stays sound and linear", () => {
       "2-",
       "GB82 WEST 1234 5698 7654 32 ABCD ",
       "GB00 A1B2 C3D4 E5F6 G7H8 I9J0 K1L2 M3 ",
+      // Overlapping gated scan: a candidate starts at EVERY 4-digit group.
+      "4111 ",
+      "4111-",
+      "3782 822463 ",
+      "123.45.",
+      "415-555-0132x",
     ]) {
       const hostile = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
       const started = performance.now();

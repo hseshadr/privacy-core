@@ -50,12 +50,9 @@ function anchored(rule: Rule): RegExp {
  * FULL text, closing a word — so a card is never carved out of a longer digit
  * run — and (b) be a complete match of the rule's own pattern.
  *
- * Every gated pattern is `\b` + a bounded repetition of one unit + `\b`, so
- * its word-closing prefixes match exactly down to the pattern's minimum length:
- * the first prefix that fails (b) proves no shorter one can pass, and the loop
- * stops there. Deterministic and bounded — at most one attempt per unit of the
- * rejected match (≤ 38 chars for CARD, ≤ 64 for IBAN), so detection stays
- * linear in the input.
+ * Deterministic and bounded: candidates end only where a word closes inside
+ * the rejected match, and a gated match is at most 64 characters (IBAN), so
+ * this is a small constant per rejection.
  */
 function retryShorter(
   text: string,
@@ -68,62 +65,96 @@ function retryShorter(
   for (let end = start + length - 1; end > start; end--) {
     if (!isWordAt(text, end - 1) || isWordAt(text, end)) continue;
     const value = text.slice(start, end);
-    if (!whole.test(value)) return undefined;
-    if (accept(value)) return { type: rule.type, value, start, end };
+    if (whole.test(value) && accept(value)) {
+      return { type: rule.type, value, start, end };
+    }
   }
   return undefined;
+}
+
+/** A gated rule's match: accepted whole, accepted shorter, or rejected. */
+function gatedSpan(
+  text: string,
+  rule: Rule,
+  accept: (value: string) => boolean,
+  whole: () => RegExp,
+  m: RegExpExecArray,
+): Span | undefined {
+  const value = m[0];
+  if (accept(value)) {
+    return {
+      type: rule.type,
+      value,
+      start: m.index,
+      end: m.index + value.length,
+    };
+  }
+  return retryShorter(text, rule, whole(), accept, m.index, value.length);
 }
 
 function regexSpans(text: string, rule: Rule): Span[] {
   const out: Span[] = [];
   // A private copy: the shared RULES regex is global, so its lastIndex is state.
   const re = new RegExp(rule.re.source, rule.re.flags);
-  let whole: RegExp | undefined;
+  const accept = rule.accept;
+  let anchoredRe: RegExp | undefined;
+  const whole = () => {
+    anchoredRe ??= anchored(rule);
+    return anchoredRe;
+  };
   for (let m = re.exec(text); m !== null; m = re.exec(text)) {
-    // If the rule has a capture group, that group is the value; else whole match.
-    const value = m[1] ?? m[0];
-    const start = m.index + m[0].indexOf(value);
-    const span = { type: rule.type, value, start, end: start + value.length };
-    if (!rule.accept || rule.accept(value)) {
-      out.push(span);
+    if (!accept) {
+      // A label-gated rule redacts its named `value` group; others the match.
+      const value = m.groups?.value ?? m[0];
+      const start = m.index + m[0].indexOf(value);
+      out.push({ type: rule.type, value, start, end: start + value.length });
       continue;
     }
-    whole ??= anchored(rule);
-    const shorter = retryShorter(
-      text,
-      rule,
-      whole,
-      rule.accept,
-      start,
-      value.length,
-    );
-    if (shorter) {
-      out.push(shorter);
-      // Resume right after the accepted prefix so nothing it gave back is lost.
-      re.lastIndex = shorter.end;
-    }
+    const span = gatedSpan(text, rule, accept, whole, m);
+    if (span) out.push(span);
+    // Gated rules scan OVERLAPPING candidates: the next attempt starts one
+    // character in, not after this match. A real card preceded by another
+    // digit group (`#2 4111 1111 1111 1111`, a phone's last four) is otherwise
+    // hidden inside a longer, Luhn-failing candidate that started too early.
+    // Overlaps are merged afterwards, so coverage only grows. Each start is
+    // tried once and a gated match is bounded, so this stays linear.
+    re.lastIndex = m.index + 1;
   }
   return out;
 }
 
 /**
- * Drop overlapping spans (earlier/longer wins), keeping a sorted, disjoint set.
+ * Merge overlapping spans into their UNION, keeping a sorted, disjoint set.
+ *
+ * Spans are ordered by start, longer first. A span that starts inside the one
+ * before it EXTENDS that span to the later end (the earlier span's type is
+ * kept, and its value becomes the exact text of the union) instead of being
+ * dropped. Dropping was a leak: in `3852631216 760-04-7660` a candidate card
+ * covering `…1216 760` beat the SSN, and the SSN's `-04-7660` went out bare.
+ * An overlap can therefore only ever widen what is redacted, never uncover it.
  *
  * `Array.prototype.sort` is stable (ES2019), so spans that tie on both offset
  * and length keep their input order — which is `RULES` order. That is the
- * documented priority channel: a label-gated ACCOUNT span beats the bare-digit
- * SSN span covering the same characters because ACCOUNT is listed first.
+ * documented type-priority channel: a label-gated ACCOUNT span beats the
+ * bare-digit SSN span covering the same characters because ACCOUNT is listed
+ * first.
  */
-function dropOverlaps(spans: readonly Span[]): Span[] {
+function mergeOverlaps(text: string, spans: readonly Span[]): Span[] {
   const sorted = [...spans].sort(
     (a, b) => a.start - b.start || b.end - b.start - (a.end - a.start),
   );
   const kept: Span[] = [];
-  let lastEnd = -1;
   for (const s of sorted) {
-    if (s.start >= lastEnd) {
+    const last = kept[kept.length - 1];
+    if (last === undefined || s.start >= last.end) {
       kept.push(s);
-      lastEnd = s.end;
+    } else if (s.end > last.end) {
+      kept[kept.length - 1] = {
+        type: last.type,
+        value: text.slice(last.start, s.end),
+        start: last.start,
+        end: s.end,
+      };
     }
   }
   return kept;
@@ -132,8 +163,8 @@ function dropOverlaps(spans: readonly Span[]): Span[] {
 /**
  * Detect PII spans deterministically from the FIXED ruleset in `patterns.ts`:
  * structured patterns, checksum/issuance validators, and the finance/name
- * dictionaries. Overlaps are dropped; the result is sorted by start offset and
- * non-overlapping.
+ * dictionaries. Overlapping spans are merged into their union; the result is
+ * sorted by start offset and non-overlapping.
  *
  * This is not "all PII" — it is exactly what `RULES`, `MERCHANTS` and `NAMES`
  * cover, published as a coverage table in the README. Recall is the product:
@@ -147,5 +178,5 @@ export function detect(text: string): Span[] {
     ...dictSpans(text, "MERCHANT", MERCHANTS),
     ...dictSpans(text, "NAME", NAMES),
   ];
-  return dropOverlaps(all);
+  return mergeOverlaps(text, all);
 }

@@ -65,6 +65,13 @@ const NEWLY_COVERED: ReadonlyArray<{
     raw: "4111 1111 1111 1111", // card followed by its expiry (Luhn retry)
     fragments: ["4111 1111 1111 1111", "1111 1111"],
   },
+  { raw: "415-555-0177", fragments: ["555-0177"] }, // phone glued to "x12"
+  { raw: "345.67.8901", fragments: ["67.8901", "8901"] }, // dot-separated SSN
+  {
+    raw: "5555 5555 5555 4444", // card after another digit group ("#2")
+    fragments: ["5555 4444"],
+  },
+  { raw: "760-04-7660", fragments: ["04-7660", "7660"] }, // SSN after a ref
 ];
 
 /** Every raw value and identifying fragment that must never cross the wire. */
@@ -77,19 +84,23 @@ const ALL_LEAKS = [
  * The NON-VACUITY half. Every "raw value is absent" assertion would pass
  * trivially on a fixture that simply did not contain these formats, so the wire
  * is REQUIRED to carry the placeholders the widened recognizers must mint:
- * three more SSNs, a second and third EMAIL, four more PHONEs and a second CARD.
+ * five more SSNs, a second and third EMAIL, five more PHONEs and two more CARDs.
  */
 const REQUIRED_TOKENS = [
   "[SSN_2]",
   "[SSN_3]",
   "[SSN_4]",
+  "[SSN_5]",
+  "[SSN_6]",
   "[EMAIL_2]",
   "[EMAIL_3]",
   "[PHONE_2]",
   "[PHONE_3]",
   "[PHONE_4]",
   "[PHONE_5]",
+  "[PHONE_6]",
   "[CARD_2]",
+  "[CARD_3]",
 ];
 
 const SUCCESS_TEXT =

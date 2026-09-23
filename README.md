@@ -140,12 +140,12 @@ it is not detected, and the review step is what catches it.
 | Type | Recognized | Not recognized |
 | --- | --- | --- |
 | `EMAIL` | any script, on both sides of the `@` — `ada@example.com`, `josé.álvarez@example.com`, `kontakt@münchen-bank.example` | a domain with no dot (`user@localhost`) |
-| `SSN` | dashed `123-45-6789` and spaced `123 45 6789` — **any** digits, so ITINs (`912-70-1234`) and never-issued `666-…`/`000-…`/`…-00-…` values are redacted too; unseparated `123456789` only when it passes the SSA issuance rules (area not `000`/`666`/`9xx`, group not `00`, serial not `0000`) | an unseparated 9-digit run that could never have been issued — which is how routing numbers stay routing numbers; other separators (`123.45.6789`, en dashes, NBSP) |
-| `PHONE` | US/NANP with `-`, `.` or space separators, optional parentheses, optional `+1`: `(415) 555-0132`, `+1(415) 555-0132`, `(415)`+tab/newline/NBSP+`555-0132`, `415-555-0132`, `212.555.0187`, `+1 646 555 0143`. A parenthesized area code takes any digits; without parentheses, area and exchange must start `2`–`9` | an unformatted `4155550132`, a 7-digit local number, non-NANP international, an unparenthesized number whose area or exchange starts `0`/`1` (`123-456-7890`), a number glued to an extension (`415-555-0132x12`) |
-| `CARD` | 13–19 digits, spaced or hyphenated, **Luhn-valid** — including when more digits follow (`4111 1111 1111 1111 12/27`): a Luhn-rejected match is retried shorter, ending on a word boundary | runs that fail Luhn (deliberately — they are not card numbers); a card fused into a longer digit run with no separator |
+| `SSN` | `123-45-6789`, `123 45 6789`, and the same shape with any **one** consistent separator — a dot (`123.45.6789`), any whitespace (NBSP included) or any Unicode dash (en/em dash, hyphen, minus) — with **any** digits, so ITINs (`912-70-1234`) and never-issued `666-…`/`000-…`/`…-00-…` values are redacted too; unseparated `123456789` only when it passes the SSA issuance rules (area not `000`/`666`/`9xx`, group not `00`, serial not `0000`) | an unseparated 9-digit run that could never have been issued — which is how routing numbers stay routing numbers; mixed separators (`123-45.6789`) |
+| `PHONE` | US/NANP with `-`, `.` or space separators, optional parentheses, optional `+1`: `(415) 555-0132`, `+1(415) 555-0132`, `(415)`+tab/newline/NBSP+`555-0132`, `415-555-0132`, `212.555.0187`, `+1 646 555 0143` — also when glued to an extension (`415-555-0132x12` redacts the number). A parenthesized area code takes any digits; without parentheses, area and exchange must start `2`–`9` | an unformatted `4155550132`, a 7-digit local number, non-NANP international, an unparenthesized number whose area or exchange starts `0`/`1` (`123-456-7890`) |
+| `CARD` | **Luhn-valid** numbers in the layouts cards are printed in: 13–19 unseparated digits, 4-digit groups with one consistent space or hyphen (`4111 1111 1111 1111`, a short last group for 13–15 digits, one trailing 1–3 digit group for 17–19), and Amex/Diners 4-6-5 / 4-6-4 (`3782 822463 10005`). Found wherever it sits: after another digit group (`#2 4111 …`, a phone's last four) and before more digits (`4111 1111 1111 1111 12/27`, via a shorter retry) | runs that fail Luhn (deliberately — they are not card numbers); a card fused into a longer digit run with no separator; mixed or irregular grouping (`4111 1111-1111 1111`, `411 11111 …`) |
 | `IBAN` | grouped or compact, **mod-97-valid** — including when an uppercase word follows (`GB82 WEST … 32 ABCD`), by the same shorter retry | other bank identifiers (SWIFT/BIC, UK sort codes) |
 | `ROUTING` | `Routing number: 021000021` — the English label is required | a bare routing number, which is not distinguishable from any other 9-digit run |
-| `ACCOUNT` | `Account number: 000123456789` — the English label is required | a bare account number |
+| `ACCOUNT` | `Account number: 000123456789` — 6 to 17 digits; the English label is required | a bare account number; a labelled one of 5 digits or fewer (indistinguishable from a year or amount elsewhere in the text) |
 | `AMOUNT` | `$1,482.10` | other currencies |
 | `DATE` | `01/14/2026` | every other date format |
 | `NAME` | three demo names (`Ada Lovelace`, `Grace Hopper`, `Alan Turing`) | **every other name** — general name detection is not shipped |
@@ -338,7 +338,7 @@ src/
 ├── rehydrate.ts        # local restore of real values after the reply
 ├── vault.ts            # Vault — reversible token<->value map (in-memory)
 ├── detect/
-│   ├── detector.ts     # detect() — merges patterns + dictionaries, drops overlaps
+│   ├── detector.ts     # detect() — merges patterns + dictionaries, unions overlaps
 │   ├── patterns.ts     # the deterministic ruleset (generic + finance packs)
 │   └── checksums.ts    # Luhn (cards), IBAN mod-97, SSA rules (bare SSNs)
 ├── providers/

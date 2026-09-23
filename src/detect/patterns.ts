@@ -20,7 +20,11 @@ const EMAIL_RE =
   /(?<![\p{L}\p{M}\p{N}_.+-])[\p{L}\p{M}\p{N}_.+-]+@[\p{L}\p{M}\p{N}_-]+\.[\p{L}\p{M}\p{N}_.-]*[\p{L}\p{M}\p{N}_]/gu;
 
 /**
- * US SSN / ITIN written with separators: `123-45-6789` and `123 45 6789`.
+ * US SSN / ITIN written with separators: `123-45-6789`, `123 45 6789`, and the
+ * same shape with any ONE consistent separator — a dot, any whitespace
+ * (NBSP included), or any Unicode dash (U+2010-U+2015, U+2212 minus). The
+ * back-reference `\1` makes the second separator repeat the first, so a mixed
+ * `123-45.6789` is not taken.
  *
  * Deliberately NOT gated on `ssnValid`. v0.2.2 redacted every dashed
  * `ddd-dd-dddd`, and the SSA issuance rules would drop real identifiers written
@@ -29,7 +33,7 @@ const EMAIL_RE =
  * separators is still an identifier far more often than it is anything else.
  * The separators are what make the shape specific enough on their own.
  */
-const SSN_SEPARATED_RE = /\b(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4})\b/g;
+const SSN_SEPARATED_RE = /\b\d{3}([-.\s\u2010-\u2015\u2212])\d{2}\1\d{4}\b/g;
 
 /**
  * US SSN written as a bare 9-digit run: `123456789`. Gated on `ssnValid` (SSA
@@ -41,6 +45,10 @@ const SSN_BARE_RE = /\b\d{9}\b/g;
 
 /**
  * NANP phone number, in two branches.
+ *
+ * Both branches end at `(?!\d)` rather than `\b`, so a number glued to its
+ * extension (`415-555-0132x12`) is still redacted, while the middle of a longer
+ * digit run never is.
  *
  * Parenthesized: `(415) 555-0132`, with an optional `+1`/`1` country code that
  * may be glued to the parenthesis (`+1(415) 555-0132`) and any single
@@ -59,7 +67,28 @@ const SSN_BARE_RE = /\b\d{9}\b/g;
  * or reference number. That limit is stated in the README coverage table.
  */
 const PHONE_RE =
-  /(?:(?<!\d)\+?1[-. ]?)?\(\d{3}\)[-.\s]?\d{3}[-. ]\d{4}\b|(?<!\d)(?:\+?1[-. ])?[2-9]\d{2}[-. ][2-9]\d{2}[-. ]\d{4}\b/g;
+  /(?:(?<!\d)\+?1[-. ]?)?\(\d{3}\)[-.\s]?\d{3}[-. ]\d{4}(?!\d)|(?<!\d)(?:\+?1[-. ])?[2-9]\d{2}[-. ][2-9]\d{2}[-. ]\d{4}(?!\d)/g;
+
+/**
+ * Payment card number, in the layouts cards are printed and typed in:
+ *
+ * - unseparated, 13-19 digits: `4111111111111111`;
+ * - 4-digit groups with ONE consistent separator (`\1`): `4111 1111 1111 1111`,
+ *   `4111-1111-1111-1111`, a short last group for 13-15 digits
+ *   (`4222 2222 2222 2`), or one trailing 1-3 digit group for 17-19;
+ * - Amex/Diners 4-6-5 / 4-6-4, again with one consistent separator (`\2`):
+ *   `3782 822463 10005`.
+ *
+ * The previous `(?:\d[ -]?){13,19}` accepted any 13-19 digits with optional
+ * separators ANYWHERE, so it glued a phone's last four, an SSN's serial or a
+ * reference number onto the front of a real card, failed Luhn on the result,
+ * and let the whole card through. Requiring real card grouping means a
+ * neighbouring digit run can join a candidate only as a complete 4-digit group
+ * with the same separator — and `detect()` still tries every later start. Luhn
+ * gates every candidate; every quantifier is bounded, so the pattern is linear.
+ */
+const CARD_RE =
+  /\b(?:\d{13,19}|\d{4}([ -])\d{4}\1\d{4}\1(?:\d{4}(?:\1\d{1,3})?|\d{1,3})|\d{4}([ -])\d{6}\2\d{4,5})\b/g;
 
 /** A regex recognizer, optionally gated by a checksum/structure accept-test. */
 export interface Rule {
@@ -92,9 +121,14 @@ export const RULES: readonly Rule[] = [
     re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]){11,30}\b/g,
     accept: ibanValid,
   },
-  { type: "CARD", re: /\b(?:\d[ -]?){13,19}\b/g, accept: luhnValid },
-  { type: "ROUTING", re: /\bRouting number:\s*(\d{9})\b/g },
-  { type: "ACCOUNT", re: /\bAccount number:\s*(\d{9,12})\b/g },
+  { type: "CARD", re: CARD_RE, accept: luhnValid },
+  // Label-gated: the English label is what makes a bare digit run an
+  // identifier, so the named `value` group is what gets redacted. ACCOUNT takes
+  // 6-17 digits (US account numbers run up to 17); five or fewer would collide
+  // with years and amounts elsewhere in the text, which the residual guard then
+  // refuses to send.
+  { type: "ROUTING", re: /\bRouting number:\s*(?<value>\d{9})\b/g },
+  { type: "ACCOUNT", re: /\bAccount number:\s*(?<value>\d{6,17})\b/g },
   { type: "SSN", re: SSN_SEPARATED_RE },
   { type: "SSN", re: SSN_BARE_RE, accept: ssnValid },
   { type: "PHONE", re: PHONE_RE },

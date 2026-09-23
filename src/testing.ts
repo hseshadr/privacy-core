@@ -6,9 +6,9 @@
 
 /**
  * SYNTHETIC, INVENTED bank statement. Contains NO real PII.
- * - Cards 4242…4242 and 4111…1111 are canonical processor test cards
+ * - Cards 4242…4242, 4111…1111 and 5555…4444 are canonical processor test cards
  *   (Luhn-valid, not issued).
- * - ITIN 912-70-1234 is an invented value in the ITIN (9xx) area range.
+ * - ITIN 912-70-1234 and SSNs 345.67.8901 / 760-04-7660 are invented values.
  * - IBAN GB82 WEST… is the public mod-97 IBAN example from Wikipedia.
  * - SSN 123-45-6789 is a textbook placeholder.
  * - Routing 021000021 is a published ABA test routing number (JPMorgan Chase).
@@ -21,7 +21,10 @@
  * and `+1`-formatted phones — plus the shapes the 0.3.0 security review found
  * leaking: a dashed ITIN (area `9xx`, which the SSA issuance rules reject), a
  * `+1` glued to a parenthesized area code, and a card followed by its expiry
- * (the greedy match fails Luhn and must be retried shorter). Node and Chromium
+ * (the greedy match fails Luhn and must be retried shorter); and from the
+ * re-review, a phone glued to an extension, a dot-separated SSN, a card after
+ * another digit group, and an SSN right after a reference number (whose tail
+ * leaked when overlapping spans were dropped instead of merged). Node and Chromium
  * do not share an execution path for Unicode regex semantics or source
  * decoding, so these have to live in the fixture a real browser drives — a unit
  * test cannot vouch for them.
@@ -43,6 +46,8 @@ Additional contacts on this account:
   Branch callback: +1 646 555 0143
   Tax ID: ITIN 912-70-1234, fax +1(415) 555-0199
   Backup card 4111 1111 1111 1111 12/27
+  Callback 415-555-0177x12; alt SSN 345.67.8901; ref #2 5555 5555 5555 4444
+  Case 3852631216 760-04-7660
 
 Account number: 000123456789
 Routing number: 021000021

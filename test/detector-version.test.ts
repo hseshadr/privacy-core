@@ -36,16 +36,18 @@ function rulesetFingerprint(): string {
  * - "1": the ruleset shipped through 0.2.2 (ASCII-only email, dashed-only SSN,
  *   `(415) 555-0132`-only phone). Computed from `src/detect/patterns.ts` at the
  *   v0.2.2 tag with this same function.
- * - "2": 0.3.0 — Unicode email; dashed and spaced SSN ungated (as v0.2.2
- *   dashed was) plus an unseparated 9-digit SSN gated on `ssnValid`; NANP
- *   phone with an unrestricted parenthesized branch and a `2-9`-gated bare
- *   branch; label-gated ROUTING/ACCOUNT ordered before SSN. (Recomputed before
- *   0.3.0 shipped, after the pre-release security review — "2" was never
- *   sealed into a published receipt with any other ruleset.)
+ * - "2": 0.3.0 — Unicode email; SSN written with any one consistent separator
+ *   (dash, dot, whitespace, Unicode dash) ungated, plus an unseparated 9-digit
+ *   SSN gated on `ssnValid`; NANP phone (unrestricted parenthesized branch,
+ *   `2-9`-gated bare branch, both ending at `(?!\d)`); card grammar of real
+ *   print layouts; ROUTING/ACCOUNT with a named `value` group (ACCOUNT 6-17
+ *   digits), ordered before SSN. (Recomputed twice before 0.3.0 shipped, after
+ *   the pre-release security reviews — "2" was never sealed into a published
+ *   receipt with any other ruleset.)
  */
 const RULESET_GOLDENS: Readonly<Record<string, string>> = {
   "1": "sha256:3b6b79ace54f87e6ffb25c7a7567a621bdae41007cc614d302b390b891e058c6",
-  "2": "sha256:25c55b20e081cdea7fdc02505d92c37ab9d362d128fd851d4aca9a0833357f87",
+  "2": "sha256:3ff60dea3b7d5c43162f5e669f3f7be650901fc54867087320e05054959c37a4",
 };
 
 describe("detector version (which ruleset screened a sealed receipt)", () => {
