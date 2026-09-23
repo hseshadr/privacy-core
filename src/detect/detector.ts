@@ -40,29 +40,32 @@ function anchored(rule: Rule): RegExp {
 }
 
 /**
- * After an accept-gate rejects a greedy match, retry SHORTER candidates from
- * the same start, longest first, and return the first one the gate accepts.
+ * After an accept-gate rejects a greedy match, retry the rule's SHORTER
+ * candidates from the same start, longest first, and return the first one the
+ * gate accepts.
  *
  * The regex engine only reports the longest match at a position, so a valid
  * card or IBAN followed by more digits/letters (`4111 1111 1111 1111 12/27`,
  * `GB82 WEST 1234 5698 7654 32 ABCD`) used to be matched too long, fail its
  * checksum, and leak whole. A candidate must (a) end on a word boundary in the
- * FULL text, closing a word — so a card is never carved out of a longer digit
- * run — and (b) be a complete match of the rule's own pattern.
+ * FULL text — so a card is never carved out of a longer digit run — and (b) be
+ * a complete match of the rule's own pattern.
  *
- * Deterministic and bounded: candidates end only where a word closes inside
- * the rejected match, and a gated match is at most 64 characters (IBAN), so
- * this is a small constant per rejection.
+ * Deterministic and bounded: the rule names its candidates (every word-closing
+ * prefix of a ≤ 23-character card; the single country-length prefix of an
+ * IBAN), so this is a small constant per rejection.
  */
 function retryShorter(
   text: string,
   rule: Rule,
   whole: RegExp,
   accept: (value: string) => boolean,
-  start: number,
-  length: number,
+  match: RegExpExecArray,
+  shorter: (match: string) => readonly number[],
 ): Span | undefined {
-  for (let end = start + length - 1; end > start; end--) {
+  const start = match.index;
+  for (const length of shorter(match[0])) {
+    const end = start + length;
     if (!isWordAt(text, end - 1) || isWordAt(text, end)) continue;
     const value = text.slice(start, end);
     if (whole.test(value) && accept(value)) {
@@ -89,7 +92,19 @@ function gatedSpan(
       end: m.index + value.length,
     };
   }
-  return retryShorter(text, rule, whole(), accept, m.index, value.length);
+  return rule.shorter
+    ? retryShorter(text, rule, whole(), accept, m, rule.shorter)
+    : undefined;
+}
+
+/** Where the next attempt of a gated rule begins after the match `m`. */
+function nextStart(rule: Rule, m: RegExpExecArray, span?: Span): number {
+  // "every-start": a real card preceded by another digit group (`#2 4111 …`,
+  // a phone's last four) is otherwise hidden inside a longer, rejected
+  // candidate that started too early. Each start is tried once and a gated
+  // match is bounded, so this stays linear.
+  if (rule.scan === "every-start") return m.index + 1;
+  return span ? span.end : m.index + m[0].length;
 }
 
 function regexSpans(text: string, rule: Rule): Span[] {
@@ -112,13 +127,8 @@ function regexSpans(text: string, rule: Rule): Span[] {
     }
     const span = gatedSpan(text, rule, accept, whole, m);
     if (span) out.push(span);
-    // Gated rules scan OVERLAPPING candidates: the next attempt starts one
-    // character in, not after this match. A real card preceded by another
-    // digit group (`#2 4111 1111 1111 1111`, a phone's last four) is otherwise
-    // hidden inside a longer, Luhn-failing candidate that started too early.
-    // Overlaps are merged afterwards, so coverage only grows. Each start is
-    // tried once and a gated match is bounded, so this stays linear.
-    re.lastIndex = m.index + 1;
+    // Overlaps between these spans are merged afterwards, so coverage only grows.
+    re.lastIndex = nextStart(rule, m, span);
   }
   return out;
 }

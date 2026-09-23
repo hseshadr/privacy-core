@@ -254,13 +254,72 @@ describe("a card preceded by another digit group is still found", () => {
       expect(valuesOf(`Card ${card} on file.`, "CARD"), card).toEqual([card]);
     }
   });
+});
 
-  it("does not glue unrelated digit groups into a card", () => {
-    // Neither is 4-digit grouped with one consistent separator, nor a single
-    // unseparated run — the shapes the old `(?:\d[ -]?){13,19}` swallowed.
-    expect(valuesOf("Ref 3852631216 7600 47660", "CARD")).toEqual([]);
-    expect(valuesOf("Card 4111 1111-1111 1111 on file", "CARD")).toEqual([]);
+/** Complete `prefix` with the one check digit that makes it Luhn-valid. */
+function luhnComplete(prefix: string): string {
+  for (let check = 0; check < 10; check++) {
+    const candidate = `${prefix}${check}`;
+    let sum = 0;
+    let double = false;
+    for (let i = candidate.length - 1; i >= 0; i--) {
+      let n = candidate.charCodeAt(i) - 48;
+      if (double) n = n * 2 > 9 ? n * 2 - 9 : n * 2;
+      sum += n;
+      double = !double;
+    }
+    if (sum % 10 === 0) return candidate;
+  }
+  throw new Error("unreachable: some check digit always completes Luhn");
+}
+
+/** Lay `digits` out in `sizes` groups, cycling through `seps` between them. */
+function layout(
+  digits: string,
+  sizes: readonly number[],
+  seps: readonly string[],
+): string {
+  let out = "";
+  let at = 0;
+  sizes.forEach((size, k) => {
+    if (k > 0) out += seps[(k - 1) % seps.length];
+    out += digits.slice(at, at + size);
+    at += size;
   });
+  return out;
+}
+
+/**
+ * Every layout v0.2.2's `(?:\d[ -]?){13,19}` redacted — mixed separators and
+ * non-4-digit groupings included. The print-layout grammar alone missed ten of
+ * these (0% redacted where v0.2.2 had 100%); the v0.2.2 rule now runs beside it.
+ */
+const V022_CARD_LAYOUTS: ReadonlyArray<
+  readonly [string, string, readonly number[], readonly string[]]
+> = [
+  ["16 4-4-4-4 mixed", "411111111111111", [4, 4, 4, 4], [" ", "-", " "]],
+  ["16 8-8", "455555555555555", [8, 8], [" "]],
+  ["16 4-4-8", "545454545454545", [4, 4, 8], [" "]],
+  ["16 4-12", "601100099013942", [4, 12], [" "]],
+  ["16 6-10", "353011133330000", [6, 10], [" "]],
+  ["15 amex mixed", "37828224631000", [4, 6, 5], [" ", "-"]],
+  ["13 4-3-3-3", "422222222222", [4, 3, 3, 3], [" "]],
+  ["19 6-13", "623456789012345678", [6, 13], [" "]],
+  ["19 4-4-4-7", "411111111111111111", [4, 4, 4, 7], [" "]],
+  ["18 4-4-4-6", "41111111111111111", [4, 4, 4, 6], [" "]],
+  ["16 4-4-4-4", "411111111111111", [4, 4, 4, 4], [" "]],
+  ["15 amex 4-6-5", "37828224631000", [4, 6, 5], ["-"]],
+];
+
+describe("every card layout v0.2.2 redacted is still redacted", () => {
+  for (const [label, prefix, sizes, seps] of V022_CARD_LAYOUTS) {
+    it(`redacts a standalone ${label} card`, () => {
+      const card = layout(luhnComplete(prefix), sizes, seps);
+      const text = `Card: ${card}.`;
+      expect(leakedChars(text, card), card).toBe("");
+      expect(valuesOf(text, "CARD"), card).toContain(card);
+    });
+  }
 });
 
 describe("the remaining format limits the review found", () => {
@@ -311,7 +370,12 @@ describe("the shorter-candidate retry stays sound and linear", () => {
   const gated = RULES.filter((rule) => rule.accept !== undefined);
 
   it("only runs on gated patterns bounded by \\b, whose whole match is the value", () => {
-    expect(gated.map((rule) => rule.type)).toEqual(["IBAN", "CARD", "SSN"]);
+    expect(gated.map((rule) => rule.type)).toEqual([
+      "IBAN",
+      "CARD",
+      "CARD",
+      "SSN",
+    ]);
     for (const rule of gated) {
       expect(rule.re.source.startsWith("\\b"), rule.type).toBe(true);
       expect(rule.re.source.endsWith("\\b"), rule.type).toBe(true);
@@ -327,6 +391,26 @@ describe("the shorter-candidate retry stays sound and linear", () => {
         new RegExp(rule.re.source, rule.re.flags).test(""),
         rule.type,
       ).toBe(false);
+    }
+  });
+
+  it("scans 512 KiB of IBAN-shaped input without a per-start retry blow-up", () => {
+    // Every `AB12`/`GB82` group starts an IBAN candidate. Re-testing ~7 shorter
+    // prefixes at each start made this ~25x slower than v0.2.2 (1.4-1.6 s on
+    // the browser thread); the country-length table allows at most ONE retry
+    // candidate per start. Measured ~130-215 ms (400-600 ms under coverage
+    // instrumentation); the unbounded retry took 1.2-1.6 s uninstrumented.
+    const size = 512 * 1024;
+    for (const unit of ["AB12 ", "GB82 A1 ", "ZZ99 99 "]) {
+      const hostile = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      // Best of three: the bound is about the algorithm, not a busy runner.
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const started = performance.now();
+        detect(hostile);
+        best = Math.min(best, performance.now() - started);
+      }
+      expect(best, unit).toBeLessThan(1000);
     }
   });
 

@@ -1,5 +1,5 @@
 import type { EntityType } from "../types.js";
-import { ibanValid, luhnValid, ssnValid } from "./checksums.js";
+import { IBAN_LENGTHS, ibanValid, luhnValid, ssnValid } from "./checksums.js";
 
 /**
  * Email, Unicode-aware. `\w` is ASCII-only in JavaScript, so the previous
@@ -90,11 +90,68 @@ const PHONE_RE =
 const CARD_RE =
   /\b(?:\d{13,19}|\d{4}([ -])\d{4}\1\d{4}\1(?:\d{4}(?:\1\d{1,3})?|\d{1,3})|\d{4}([ -])\d{6}\2\d{4,5})\b/g;
 
+/**
+ * The v0.2.2 card recognizer, kept beside `CARD_RE`: 13-19 digits with an
+ * optional space or hyphen between any two. (v0.2.2 wrote it
+ * `(?:\d[ -]?){13,19}`, which could also swallow ONE trailing separator; ending
+ * on a digit covers exactly the same digits without eating the space after a
+ * card.) It is what redacts every
+ * layout the print-layout grammar does not name — mixed separators, 8-8, 4-12,
+ * 6-10, 6-13, 4-3-3-3, 4-4-4-7 — which v0.2.2 always redacted. Its looseness
+ * (gluing a neighbour's digits onto a card) is harmless now: overlapping spans
+ * merge into their union, so a chance Luhn-valid glue can only widen what is
+ * redacted. Scanned the v0.2.2 way — resuming after each match — because
+ * trying it at every start costs seconds on hostile input.
+ */
+const CARD_LOOSE_RE = /\b(?:\d[ -]?){12,18}\d\b/g;
+
+/**
+ * Lengths of the shorter candidates worth retrying when an accept-gate rejects
+ * `match`, longest first: every prefix that closes a word inside the match.
+ */
+function wordClosingPrefixes(match: string): number[] {
+  const out: number[] = [];
+  for (let end = match.length - 1; end > 0; end--) {
+    if (/\w/.test(match.charAt(end - 1)) && !/\w/.test(match.charAt(end))) {
+      out.push(end);
+    }
+  }
+  return out;
+}
+
+/**
+ * The single IBAN retry candidate: the prefix holding exactly the country's
+ * registered number of characters. An unknown country has none. One candidate
+ * per start — not one per group — is what keeps hostile IBAN-shaped input
+ * linear with a small constant.
+ */
+function ibanCountryPrefix(match: string): number[] {
+  const length = IBAN_LENGTHS[match.slice(0, 2)];
+  if (length === undefined) return [];
+  let seen = 0;
+  for (let end = 0; end < match.length; end++) {
+    if (match.charAt(end) !== " ") seen++;
+    if (seen === length) return end + 1 < match.length ? [end + 1] : [];
+  }
+  return [];
+}
+
 /** A regex recognizer, optionally gated by a checksum/structure accept-test. */
 export interface Rule {
   readonly type: EntityType;
   readonly re: RegExp;
   readonly accept?: (match: string) => boolean;
+  /**
+   * `"every-start"`: after each match, the next attempt begins ONE character
+   * in, so a real value hidden inside a longer, rejected candidate that began
+   * too early is still found. Default: resume after the (accepted) match.
+   */
+  readonly scan?: "every-start";
+  /**
+   * For a gated rule: shorter candidate lengths to retry when the accept-gate
+   * rejects a match, longest first (a valid value followed by more text).
+   */
+  readonly shorter?: (match: string) => readonly number[];
 }
 
 /**
@@ -120,8 +177,17 @@ export const RULES: readonly Rule[] = [
     type: "IBAN",
     re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]){11,30}\b/g,
     accept: ibanValid,
+    scan: "every-start",
+    shorter: ibanCountryPrefix,
   },
-  { type: "CARD", re: CARD_RE, accept: luhnValid },
+  {
+    type: "CARD",
+    re: CARD_RE,
+    accept: luhnValid,
+    scan: "every-start",
+    shorter: wordClosingPrefixes,
+  },
+  { type: "CARD", re: CARD_LOOSE_RE, accept: luhnValid },
   // Label-gated: the English label is what makes a bare digit run an
   // identifier, so the named `value` group is what gets redacted. ACCOUNT takes
   // 6-17 digits (US account numbers run up to 17); five or fewer would collide

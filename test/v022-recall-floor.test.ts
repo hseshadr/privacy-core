@@ -155,6 +155,14 @@ function generatedCorpus(): string[] {
     digits,
     digits.replace(/(\d{4})(?=\d)/g, "$1 "),
     digits.replace(/(\d{4})(?=\d)/g, "$1-"),
+    // Layouts outside 4-digit grouping that v0.2.2 also redacted: mixed
+    // separators, 8-8, 4-12, 6-10 / 6-rest, 4-3-3-…, and a 4-4-4-rest tail.
+    digits.replace(/^(\d{4})(\d{4})(\d{4})/, "$1 $2-$3 "),
+    digits.replace(/^(\d{8})/, "$1 "),
+    digits.replace(/^(\d{4})/, "$1 "),
+    digits.replace(/^(\d{6})/, "$1 "),
+    digits.replace(/^(\d{4})(\d{3})(\d{3})/, "$1 $2 $3 "),
+    digits.replace(/^(\d{4})(\d{4})(\d{4})/, "$1 $2 $3 "),
   ]);
 
   const ibans = [
@@ -238,6 +246,16 @@ function multiIdentifierCorpus(count: number): Planted[] {
     () =>
       pick(["4111 1111 1111 1111", "4242424242424242", "5555-5555-5555-4444"]),
     () => pick(["378282246310005", "3782 822463 10005", "6011111111111117"]),
+    () =>
+      pick([
+        "4111 1111-1111 1111", // mixed separators
+        "55555555 55554444", // 8-8
+        "6011 000990139424", // 4-12
+        "353011 1333300000", // 6-10
+        "3782-822463 10005", // Amex, mixed separators
+        "4222 222 222 222", // 4-3-3-3
+        "6200 0000 0000 0000000", // 4-4-4-7
+      ]),
     () => pick(["GB82 WEST 1234 5698 7654 32", "DE89370400440532013000"]),
     () => pick(["ada.lovelace@example.com", "x_9@my-host.example"]),
   ];

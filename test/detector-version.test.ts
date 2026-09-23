@@ -9,7 +9,8 @@ import { DETECTOR_VERSION as PUBLIC_DETECTOR_VERSION } from "../src/index.js";
  * source + flags, and the NAME of its accept-gate, in `RULES` order (order is
  * the overlap tie-break, so it is part of the ruleset), plus both dictionaries.
  *
- * It deliberately does not hash the checksum function bodies — their source
+ * A rule's scan mode and the NAME of its shorter-candidate function are
+ * included when present. It deliberately does not hash the checksum function bodies — their source
  * text is formatter-sensitive — so a change *inside* `luhnValid`/`ibanValid`/
  * `ssnValid` must be caught by review, not by this guard. Adding, removing,
  * reordering, or re-gating a rule, editing a pattern, or editing a dictionary
@@ -22,6 +23,10 @@ function rulesetFingerprint(): string {
       r.re.source,
       r.re.flags,
       r.accept?.name ?? null,
+      // Scan mode and retry candidates change what a rule finds, so they are
+      // part of the ruleset. Appended only when present, so a rule without
+      // them hashes exactly as it did when "1" was computed.
+      ...(r.scan || r.shorter ? [r.scan ?? null, r.shorter?.name ?? null] : []),
     ]),
     merchants: MERCHANTS,
     names: NAMES,
@@ -39,15 +44,17 @@ function rulesetFingerprint(): string {
  * - "2": 0.3.0 — Unicode email; SSN written with any one consistent separator
  *   (dash, dot, whitespace, Unicode dash) ungated, plus an unseparated 9-digit
  *   SSN gated on `ssnValid`; NANP phone (unrestricted parenthesized branch,
- *   `2-9`-gated bare branch, both ending at `(?!\d)`); card grammar of real
- *   print layouts; ROUTING/ACCOUNT with a named `value` group (ACCOUNT 6-17
- *   digits), ordered before SSN. (Recomputed twice before 0.3.0 shipped, after
+ *   `2-9`-gated bare branch, both ending at `(?!\d)`); CARD as a print-layout
+ *   grammar scanned at every start with word-closing retries, beside the
+ *   v0.2.2 loose rule; IBAN scanned at every start with one country-length
+ *   retry; ROUTING/ACCOUNT with a named `value` group (ACCOUNT 6-17
+ *   digits), ordered before SSN. (Recomputed three times before 0.3.0 shipped, after
  *   the pre-release security reviews — "2" was never sealed into a published
  *   receipt with any other ruleset.)
  */
 const RULESET_GOLDENS: Readonly<Record<string, string>> = {
   "1": "sha256:3b6b79ace54f87e6ffb25c7a7567a621bdae41007cc614d302b390b891e058c6",
-  "2": "sha256:3ff60dea3b7d5c43162f5e669f3f7be650901fc54867087320e05054959c37a4",
+  "2": "sha256:cb11c037977126ef1648c7b7b2324391351357467025bb5d16c891ab82859158",
 };
 
 describe("detector version (which ruleset screened a sealed receipt)", () => {
