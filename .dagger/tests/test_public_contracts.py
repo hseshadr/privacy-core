@@ -435,7 +435,7 @@ def test_should_set_the_provenance_context_before_npm_publish_runs(
     assert publish == [
         "npm",
         "publish",
-        "edgeproc-privacy-core-1.2.3.tgz",
+        "./edgeproc-privacy-core-1.2.3.tgz",
         "--access",
         "public",
         "--provenance",
@@ -538,3 +538,20 @@ def test_should_run_the_provenance_probe_in_the_canonical_gate(
         "_secret_scan",
         "_workflow_security",
     ]
+
+
+def test_should_hand_npm_publish_a_path_it_can_never_read_as_a_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: npm reads `owner/repo`-shaped arguments as GitHub shorthand (the
+    # failure @edgeproc/errors hit with `release/x.tgz`); only an explicit
+    # `./` or `/` prefix is unconditionally a local path.
+    container = publish_with(json.dumps(VALID_CONTEXT), monkeypatch)
+
+    # When
+    execs = [value for kind, value in container.calls if kind == "exec"]
+    publish = cast(list[str], execs[-1])
+
+    # Then
+    assert publish[:2] == ["npm", "publish"]
+    assert publish[2].startswith(("./", "/"))

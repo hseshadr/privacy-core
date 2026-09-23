@@ -256,7 +256,9 @@ class PrivacyCore:
         archive = await self._candidate_archive(candidate)
         publish = self._publisher(candidate, oidc_url, oidc_token, environment)
         await publish.with_exec(["sha256sum", "--check", "SHA256SUMS"]).sync()
-        command = ["npm", "publish", archive, "--access", "public", "--provenance"]
+        # `./` makes the archive unconditionally a local path: npm reads an
+        # `owner/repo`-shaped argument as a GitHub shorthand spec.
+        command = ["npm", "publish", f"./{archive}", "--access", "public", "--provenance"]
         return await publish.with_exec(command).stdout()
 
     @staticmethod

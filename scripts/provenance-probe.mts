@@ -96,6 +96,7 @@ function publish(dir: string, env: NodeJS.ProcessEnv): Promise<Outcome> {
   const args = [
     NPM_CLI,
     "publish",
+    // Absolute (under tmpdir), so npm can never read it as an owner/repo spec.
     dir,
     "--provenance",
     "--access",
