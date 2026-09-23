@@ -35,10 +35,13 @@ flowchart TD
    IBANs, SSA rules for unseparated 9-digit SSNs), and finance/name dictionaries.
    Email and phone recognizers are Unicode- and format-tolerant — see the
    [coverage table](../README.md#what-it-recognizes-exactly) for the exact set.
-   Checksum-gated rules scan overlapping candidates (a card right after another
-   digit group is still tried), and when a validator rejects a greedy match (a
-   card followed by `12/27`), shorter candidates from the same start that end on
-   a word boundary are retried, longest first. Overlapping spans are MERGED into
+   CARD runs as two Luhn-gated rules: a print-layout grammar tried at every
+   start (a card right after another digit group is still found) and v0.2.2's
+   loose 13–19-digit rule, scanned the v0.2.2 way, for every other layout. IBAN
+   is also tried at every start. When a validator rejects a greedy match (a
+   card followed by `12/27`), the rule's shorter candidates from the same start
+   are retried — word-closing prefixes for a card, the one ISO 13616
+   country-length prefix for an IBAN — each ending on a word boundary. Overlapping spans are MERGED into
    their union — the earlier span's type is kept and its value becomes the
    union's exact text — so an overlap can only widen what is redacted, never
    uncover a neighbour. On an exact tie, `RULES` order picks the type, which is

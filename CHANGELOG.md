@@ -48,13 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `#2 4111 1111 1111 1111` leaked the entire card 80–90% of the time (and
   did in 0.2.2): the old `(?:\d[ -]?){13,19}` recognizer took any 13–19 digits
   with a separator anywhere, so the neighbour's digits were glued on, the result
-  failed Luhn, and scanning resumed after the whole run. CARD now accepts only
-  the layouts cards are printed in — 13–19 unseparated digits; 4-digit groups
-  with one consistent space or hyphen (a short last group for 13–15 digits, one
-  trailing 1–3 digit group for 17–19); Amex/Diners 4-6-5 / 4-6-4 — still
-  Luhn-gated, and checksum-gated rules now try a candidate at every start
-  instead of resuming after a rejected one. Mixed or irregular groupings
-  (`4111 1111-1111 1111`) are no longer recognized; the README lists that limit.
+  failed Luhn, and scanning resumed after the whole run. CARD now has two
+  Luhn-gated rules. A print-layout grammar — 13–19 unseparated digits; 4-digit
+  groups with one consistent space or hyphen (a short last group for 13–15
+  digits, one trailing 1–3 digit group for 17–19); Amex/Diners 4-6-5 / 4-6-4 —
+  is tried at EVERY start instead of resuming after a rejected candidate, so a
+  neighbour can no longer hide the card. Beside it, v0.2.2's loose
+  `(?:\d[ -]?){13,19}` rule (ending on a digit, so it no longer swallows the
+  space after a card) still runs the v0.2.2 way, resuming after each match, so
+  every layout v0.2.2 redacted — mixed separators, 8-8, 4-4-8, 4-12, 6-10,
+  6-13, 4-3-3-3, 4-4-4-6/7 — is still redacted. (A second re-review found the
+  grammar alone had dropped those ten layouts from 100% to 0%; restoring the
+  loose rule is safe now that overlapping spans merge, because its chance
+  Luhn-valid glue can only widen what is redacted.)
 - **A checksum-rejected match is now retried shorter instead of leaking whole.**
   The regex engine reports only the longest match at a position, so a valid card
   or IBAN followed by more digits or an uppercase word
@@ -63,9 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and went out verbatim. This predates 0.3.0. After a rejection, `detect()` now
   retries shorter candidates from the same start, longest first; a candidate
   must be a complete match of the rule's own pattern and end on a word boundary
-  in the full text, so a card is never carved out of a longer digit run. The
-  retry is bounded by the pattern's fixed maximum length (≤ 23 chars for CARD,
-  ≤ 64 for IBAN), so detection stays linear; a 64 KiB adversarial test pins it.
+  in the full text, so a card is never carved out of a longer digit run. Each
+  rule names its candidates: every word-closing prefix of a print-layout card
+  (≤ 23 chars), and for an IBAN the one prefix at the country's registered
+  ISO 13616 length (none for an unknown country). Detection stays linear: a
+  64 KiB adversarial test, and a 512 KiB IBAN-shaped one that an earlier
+  per-group retry had made ~25x slower (1.2–1.6 s, now ~130–215 ms), pin it.
+  `ibanValid` now folds mod-97 character by character instead of building an
+  expanded digit string — same result, a fraction of the work.
 - **Overlapping spans are merged into their union instead of dropped.** When
   two rules matched overlapping text, `detect()` kept the earlier/longer span
   and DROPPED the other, uncovering whatever the dropped span held beyond the
