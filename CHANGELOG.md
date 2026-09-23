@@ -22,19 +22,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     are asserted explicitly (a lookbehind, and a trailing alphanumeric) since `\b`
     could not do the job; every quantifier stays un-nested, so the pattern is
     linear and a ReDoS test pins that.
-  - **SSN now matches `123 45 6789` and unseparated `123456789`**, not only the
+  - **SSN now matches `123 45 6789`, unseparated `123456789`, and the same
+    shape with any one consistent separator** — a dot, any whitespace (NBSP
+    included) or any Unicode dash (en/em dash, hyphen, minus) — not only the
     dashed form. Only the unseparated form is gated on the SSA issuance rules
     (new `ssnValid`: area not `000`/`666`/`9xx`, group not `00`, serial not
     `0000`), which is what makes a bare 9-digit run safe to recognize — group
     `00` is never issued, so ABA routing numbers are excluded by construction.
-    Dashed and spaced values are redacted whatever their digits, exactly as the
-    dashed form was in 0.2.2.
+    Separated values are redacted whatever their digits, exactly as the dashed
+    form was in 0.2.2.
   - **Phone now matches the NANP set**, not only `(415) 555-0132`: `-`, `.` or
     space separators, optional parentheses, optional `+1` (also glued to the
     parenthesis: `+1(415) 555-0132`). Without parentheses, area and exchange must
     start `2-9`; a parenthesized area code takes any digits and may be followed
-    by any single whitespace character, as in 0.2.2. An unformatted 10-digit run
-    is still deliberately NOT matched.
+    by any single whitespace character, as in 0.2.2. A number glued to its
+    extension (`415-555-0132x12`) is redacted: the pattern ends at "no further
+    digit" rather than at a word boundary. An unformatted 10-digit run is still
+    deliberately NOT matched.
+  - **`Account number:` now takes 6–17 digits** (was 9–12), so a labelled
+    13–17-digit account number no longer leaks. Five digits or fewer stay out:
+    they collide with years and amounts elsewhere in the text, which the
+    residual guard would then refuse to send.
+- **A card preceded by another digit group is no longer missed whole.**
+  `(415) 555-0132 4111 1111 1111 1111`, `SSN 123-45-6789 4111 1111 1111 1111`
+  and `#2 4111 1111 1111 1111` leaked the entire card 80–90% of the time (and
+  did in 0.2.2): the old `(?:\d[ -]?){13,19}` recognizer took any 13–19 digits
+  with a separator anywhere, so the neighbour's digits were glued on, the result
+  failed Luhn, and scanning resumed after the whole run. CARD now accepts only
+  the layouts cards are printed in — 13–19 unseparated digits; 4-digit groups
+  with one consistent space or hyphen (a short last group for 13–15 digits, one
+  trailing 1–3 digit group for 17–19); Amex/Diners 4-6-5 / 4-6-4 — still
+  Luhn-gated, and checksum-gated rules now try a candidate at every start
+  instead of resuming after a rejected one. Mixed or irregular groupings
+  (`4111 1111-1111 1111`) are no longer recognized; the README lists that limit.
 - **A checksum-rejected match is now retried shorter instead of leaking whole.**
   The regex engine reports only the longest match at a position, so a valid card
   or IBAN followed by more digits or an uppercase word
@@ -44,8 +64,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retries shorter candidates from the same start, longest first; a candidate
   must be a complete match of the rule's own pattern and end on a word boundary
   in the full text, so a card is never carved out of a longer digit run. The
-  retry is bounded by the pattern's fixed maximum length (≤ 38 chars for CARD,
+  retry is bounded by the pattern's fixed maximum length (≤ 23 chars for CARD,
   ≤ 64 for IBAN), so detection stays linear; a 64 KiB adversarial test pins it.
+- **Overlapping spans are merged into their union instead of dropped.** When
+  two rules matched overlapping text, `detect()` kept the earlier/longer span
+  and DROPPED the other, uncovering whatever the dropped span held beyond the
+  overlap. The first 0.3.0 candidate made this an active leak (see *Security*);
+  it also lost `(747)\t712-1349` in `$1(747)\t712-1349` and the card in
+  `(144).076-2191 4111-1111-1111-1111`. The earlier span now extends to the later
+  one's end — its type is kept, its value becomes the union's exact text, and
+  the vault round-trips it — so an overlap can only widen what is redacted.
 
 ### Security
 
@@ -58,6 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     forms too, so ITINs (`912-70-1234`, `987-65-4321` — real taxpayer IDs) and
     never-issued `666-12-3456`, `000-…`, `123-00-4567` values leaked. The gate
     now applies only to the unseparated 9-digit form;
+  - a re-review of that fix found the new checksum retry had introduced a
+    leak of its own: it carved a Luhn-valid "card" out of a reference number
+    plus the next SSN's area code (`3852631216 760-04-7660`,
+    `896 38 9043 725-71-9450`), and the overlap pass then dropped the SSN, so
+    `-04-7660` went out bare — 9–17% of phone+SSN, reference+SSN and SSN+SSN
+    lines, against 0% in 0.2.2. Fixed by the union merge and the card grammar
+    above (0% on the same measurement);
   - the NANP phone pattern had dropped `+1(415) 555-0132` and `1(415) 555-0132`
     (country code glued to the parenthesis), `(415)` followed by NBSP, tab or
     newline (0.2.2 allowed `\s?` there), and parenthesized numbers whose area or
@@ -68,7 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   class of regression fail the gate: it carries a frozen, verbatim copy of the
   v0.2.2 PHONE/SSN/EMAIL/CARD/IBAN recognizers and checksums, asserts every value
   v0.2.2 redacted in its own test corpus is still redacted, and sweeps a
-  generated corpus asserting every character v0.2.2 matched is still covered.
+  generated corpus asserting every character v0.2.2 matched is still covered —
+  one identifier per line, and a seeded corpus of 20,000 lines carrying two or
+  three side by side (phone next to SSN, reference number before a card), which
+  is where the re-review's leak lived; that corpus fails on the first fix.
 - **Release dispatch no longer interpolates the `tag` input into shell.**
   `release-candidate.yml` passed `${{ inputs.tag }}` to
   `dagger/dagger-for-github`'s `args`, which that action templates into a bash
@@ -95,8 +133,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — this repository, `github.com`, a GitHub-hosted runner, and a workflow ref of
   exactly `.github/workflows/publish.yml` (the file npm trusted publishing is
   bound to, whose name is unchanged) — before setting it, plus
-  `GITHUB_ACTIONS=true`/`CI=true`, in the publisher container. Covered by the
-  Dagger module's test suite.
+  `GITHUB_ACTIONS=true`/`CI=true`, in the publisher container. The canonical
+  Dagger gate now runs `scripts/provenance-probe.mts` in exactly that container:
+  a real `npm publish --provenance` of a throwaway package against a loopback
+  stub, which must get past provider detection and start provenance generation
+  (sigstore requests its OIDC token), while a control run with the GitHub
+  variables stripped must still fail with `provider: null`. (`--dry-run` could
+  not prove this: npm 11 returns before provenance on a dry run.) It does not
+  exercise a real OIDC exchange or Sigstore signing — only a GitHub run can.
+- **The publisher now binds the candidate to `main`.** `publish.yml` only
+  checked `workflow_run.head_branch == default_branch`, which a dispatch on a
+  TAG named `main` also satisfies. Before touching the artifact it now verifies,
+  through the GitHub API, that the triggering run is a successful
+  `workflow_dispatch` of `release-candidate.yml` in this repository for exactly
+  the candidate's commit, and that this commit is reachable from the
+  default-branch commit the publish runs on; the archive is that run's own
+  artifact for that commit. The Dagger publisher code is loaded from that
+  default-branch commit (`$GITHUB_SHA`), not from the candidate's sha.
 - **The pnpm supply-chain cooldown is declared again.** `minimumReleaseAge: 1440`
   was removed in #32 ("replace the artificial 24-hour registry wait … with an
   explicit reviewed build allowlist") and a test asserted its absence — but pnpm
@@ -139,8 +192,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the developer sections) moved below the fold unchanged.
 - **The browser e2e now proves the widened formats in real Chromium.**
   `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
-  newly-covered format — including a dashed ITIN, `+1(415) 555-0199` and a card
-  followed by its expiry, the shapes the security review found leaking — and
+  newly-covered format — including a dashed ITIN, `+1(415) 555-0199`, a card
+  followed by its expiry, a phone glued to an extension, a dot-separated SSN, a
+  card after another digit group and an SSN right after a reference number, the
+  shapes the security reviews found leaking — and
   the Playwright suite asserts each raw value *and its
   identifying fragments* are absent from both the intercepted request body and
   the rendered wire pane, requires the placeholders those recognizers must mint
@@ -149,7 +204,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a different engine; this can. The suite also asserts the demo actually mounted,
   so an unrelated dev server squatting port 5173 fails with a named error instead
   of a bare "element(s) not found".
-- **`RULES` order is now the documented tie-break** for overlapping spans of equal
+- **`RULES` order is now the documented tie-break** for the TYPE of spans of equal
   length at the same offset (`Array.prototype.sort` has been stable since ES2019).
   The label-gated `ROUTING`/`ACCOUNT` rules are listed before `SSN`, so
   `Account number: 100200300` stays an `ACCOUNT` even though those digits are also
