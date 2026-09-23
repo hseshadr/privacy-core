@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Truth-in-labeling: the package is described as what it is — a
+  structured-identifier redaction boundary.** The npm `description` now names
+  the detected categories (cards, IBANs, SSNs, emails, US phones, labeled
+  account/routing numbers) and says names and free-text PII are not detected;
+  the `anonymization` keyword is removed (the README already says redaction does
+  not make data anonymous). The README headline no longer implies general name
+  detection, notes that the demo's *Grace Hopper* is one of 3 built-in demo
+  names, and "The model never sees you" is now "The model never sees what the
+  detector catches". Docs only — no behavior or wire change.
+
 - **The README front door is now one sentence, one proof, one command.** The
   first screenful states what the library does, shows the real before/after of
   the example that follows, and gives the single command that runs it. A new
