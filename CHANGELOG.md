@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-23
+
 ### Fixed
 
 - **The detector no longer leaks three ordinary formats of the PII it advertises.**
@@ -20,17 +22,183 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     are asserted explicitly (a lookbehind, and a trailing alphanumeric) since `\b`
     could not do the job; every quantifier stays un-nested, so the pattern is
     linear and a ReDoS test pins that.
-  - **SSN now matches `123 45 6789` and unseparated `123456789`**, not only the
-    dashed form. All three are gated on the SSA issuance rules (new `ssnValid`:
-    area not `000`/`666`/`9xx`, group not `00`, serial not `0000`), which is what
-    makes a bare 9-digit run safe to recognize — group `00` is never issued, so
-    ABA routing numbers are excluded by construction.
+  - **SSN now matches `123 45 6789`, unseparated `123456789`, and the same
+    shape with any one consistent separator** — a dot, any whitespace (NBSP
+    included) or any Unicode dash (en/em dash, hyphen, minus) — not only the
+    dashed form. Only the unseparated form is gated on the SSA issuance rules
+    (new `ssnValid`: area not `000`/`666`/`9xx`, group not `00`, serial not
+    `0000`), which is what makes a bare 9-digit run safe to recognize — group
+    `00` is never issued, so ABA routing numbers are excluded by construction.
+    Separated values are redacted whatever their digits, exactly as the dashed
+    form was in 0.2.2.
   - **Phone now matches the NANP set**, not only `(415) 555-0132`: `-`, `.` or
-    space separators, optional parentheses, optional `+1`. Area and exchange must
-    start `2-9`. An unformatted 10-digit run is still deliberately NOT matched.
+    space separators, optional parentheses, optional `+1` (also glued to the
+    parenthesis: `+1(415) 555-0132`). Without parentheses, area and exchange must
+    start `2-9`; a parenthesized area code takes any digits and may be followed
+    by any single whitespace character, as in 0.2.2. A number glued to its
+    extension (`415-555-0132x12`) is redacted: the pattern ends at "no further
+    digit" rather than at a word boundary. An unformatted 10-digit run is still
+    deliberately NOT matched.
+  - **`Account number:` now takes 6–17 digits** (was 9–12), so a labelled
+    13–17-digit account number no longer leaks. Five digits or fewer stay out:
+    they collide with years and amounts elsewhere in the text, which the
+    residual guard would then refuse to send.
+- **A card preceded by another digit group is no longer missed whole.**
+  `(415) 555-0132 4111 1111 1111 1111`, `SSN 123-45-6789 4111 1111 1111 1111`
+  and `#2 4111 1111 1111 1111` leaked the entire card 80–90% of the time (and
+  did in 0.2.2): the old `(?:\d[ -]?){13,19}` recognizer took any 13–19 digits
+  with a separator anywhere, so the neighbour's digits were glued on, the result
+  failed Luhn, and scanning resumed after the whole run. CARD now has two
+  Luhn-gated rules. A print-layout grammar — 13–19 unseparated digits; 4-digit
+  groups with one consistent space or hyphen (a short last group for 13–15
+  digits, one trailing 1–3 digit group for 17–19); Amex/Diners 4-6-5 / 4-6-4 —
+  is tried at EVERY start instead of resuming after a rejected candidate, so a
+  neighbour can no longer hide the card. Beside it, v0.2.2's loose
+  `(?:\d[ -]?){13,19}` rule (ending on a digit, so it no longer swallows the
+  space after a card) still runs the v0.2.2 way, resuming after each match, so
+  every layout v0.2.2 redacted — mixed separators, 8-8, 4-4-8, 4-12, 6-10,
+  6-13, 4-3-3-3, 4-4-4-6/7 — is still redacted. (A second re-review found the
+  grammar alone had dropped those ten layouts from 100% to 0%; restoring the
+  loose rule is safe now that overlapping spans merge, because its chance
+  Luhn-valid glue can only widen what is redacted.)
+- **A checksum-rejected match is now retried shorter instead of leaking whole.**
+  The regex engine reports only the longest match at a position, so a valid card
+  or IBAN followed by more digits or an uppercase word
+  (`4111 1111 1111 1111 12/27`, `4111 1111 1111 1111 123 exp…`,
+  `GB82 WEST 1234 5698 7654 32 ABCD`) was matched too long, failed Luhn/mod-97,
+  and went out verbatim. This predates 0.3.0. After a rejection, `detect()` now
+  retries shorter candidates from the same start, longest first; a candidate
+  must be a complete match of the rule's own pattern and end on a word boundary
+  in the full text, so a card is never carved out of a longer digit run. Each
+  rule names its candidates: every word-closing prefix of a print-layout card
+  (≤ 23 chars), and for an IBAN only the word-closing prefixes that already
+  pass mod-97 — at the country's registered ISO 13616 length (89 countries in
+  `IBAN_LENGTHS`), or at 15+ characters for a country outside the registry
+  (bank-issued codes such as `MA`, `NC`, `PF`) — found in one pass that folds
+  the remainder as it goes. Any whitespace the pattern accepts counts as a
+  separator, so tab- and NBSP-grouped IBANs are retried at the right length.
+  (A final review of the first table-only version found both gaps: an
+  unregistered country followed by text leaked ~4% of cases, a tab/NBSP-grouped
+  IBAN followed by a word ~95%; both are now 0 of 1,860.) Detection stays
+  linear: a 64 KiB adversarial test, and a 512 KiB IBAN-shaped one that an
+  earlier per-group retry had made ~25x slower (1.2–1.6 s, now ~155–245 ms),
+  pin it. `ibanValid` now folds mod-97 without building an expanded digit
+  string — same result, a fraction of the work.
+- **Overlapping spans are merged into their union instead of dropped.** When
+  two rules matched overlapping text, `detect()` kept the earlier/longer span
+  and DROPPED the other, uncovering whatever the dropped span held beyond the
+  overlap. The first 0.3.0 candidate made this an active leak (see *Security*);
+  it also lost `(747)\t712-1349` in `$1(747)\t712-1349` and the card in
+  `(144).076-2191 4111-1111-1111-1111`. The earlier span now extends to the later
+  one's end — its type is kept, its value becomes the union's exact text, and
+  the vault round-trips it — so an overlap can only widen what is redacted.
+
+### Security
+
+- **Email detection is no longer quadratic.** v0.2.2's
+  `\b[\w.+-]+@[\w-]+\.[\w.-]+\b` retried its unbounded local part from every
+  start of a run with no `@`, so a `1234-1234-…` run took ~0.6 s at 32k
+  characters, ~2.5 s at 64k and ~10 s at 131k (quadrupling per doubling;
+  minutes at the 512 KiB input cap) on the browser thread. The 0.3.0 email
+  recognizer's lookbehind stops a match starting mid-run, and all of 0.3.0's
+  `detect()` takes ~90 ms on the same 131k input.
+- **The 0.3.0 widening no longer narrows anything 0.2.2 redacted.** A
+  pre-release security review ran the v0.2.2 and 0.3.0 `src/detect` trees side
+  by side and found the first 0.3.0 candidate had quietly STOPPED redacting
+  values 0.2.2 caught. Both are fixed before release, each with a failing
+  regression test first:
+  - the `ssnValid` issuance gate had been applied to the dashed and spaced SSN
+    forms too, so ITINs (`912-70-1234`, `987-65-4321` — real taxpayer IDs) and
+    never-issued `666-12-3456`, `000-…`, `123-00-4567` values leaked. The gate
+    now applies only to the unseparated 9-digit form;
+  - a re-review of that fix found the new checksum retry had introduced a
+    leak of its own: it carved a Luhn-valid "card" out of a reference number
+    plus the next SSN's area code (`3852631216 760-04-7660`,
+    `896 38 9043 725-71-9450`), and the overlap pass then dropped the SSN, so
+    `-04-7660` went out bare — 9–17% of phone+SSN, reference+SSN and SSN+SSN
+    lines, against 0% in 0.2.2. Fixed by the union merge and the card grammar
+    above (0% on the same measurement);
+  - the NANP phone pattern had dropped `+1(415) 555-0132` and `1(415) 555-0132`
+    (country code glued to the parenthesis), `(415)` followed by NBSP, tab or
+    newline (0.2.2 allowed `\s?` there), and parenthesized numbers whose area or
+    exchange starts `0`/`1` (`(123) 456-7890`, `(415) 155-0132`). All match
+    again, and every shape the widened pattern gained is kept.
+
+  A new recall-floor test (`test/v022-recall-floor.test.ts`) now makes this
+  class of regression fail the gate: it carries a frozen, verbatim copy of the
+  v0.2.2 PHONE/SSN/EMAIL/CARD/IBAN recognizers and checksums, asserts every value
+  v0.2.2 redacted in its own test corpus is still redacted, and sweeps a
+  generated corpus asserting every character v0.2.2 matched is still covered —
+  one identifier per line, and a seeded corpus of 20,000 lines carrying two or
+  three side by side (phone next to SSN, reference number before a card), which
+  is where the re-review's leak lived; that corpus fails on the first fix.
+- **Release dispatch no longer interpolates the `tag` input into shell.**
+  `release-candidate.yml` passed `${{ inputs.tag }}` to
+  `dagger/dagger-for-github`'s `args`, which that action templates into a bash
+  script — a tag containing `'` ran arbitrary shell in the job that produces the
+  release artifact, which the publisher only checks against a `SHA256SUMS` from
+  the same artifact. The tag now reaches shell only as `$TAG` via `env:`, a first
+  step rejects anything but `^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`,
+  the Dagger `release_candidate` function re-checks it, and the action is used
+  only to put the Dagger CLI on `PATH` (both `release-candidate.yml` and
+  `publish.yml` call `dagger` from their own `run:` step with quoted values). A
+  workflow test now fails if any `inputs.*` or `github.event` expression reaches
+  a `run:` script or an action's shell-templated `args`/`call`/`shell`/`check`.
+- **The Dagger npm publisher can now actually produce provenance.** It ran
+  `npm publish --provenance` in a container whose only environment was the OIDC
+  request URL/token, so npm 11.13 (bundled with the pinned `node:24.16.0` image)
+  could not detect GitHub Actions and would have failed with
+  `EUSAGE: Automatic provenance generation not supported for provider: null` —
+  and skipped the trusted-publishing token exchange. `publish.yml` now records
+  the run's GitHub Actions context (`GITHUB_WORKFLOW_REF`, `GITHUB_REPOSITORY`,
+  `GITHUB_SHA`, `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_SERVER_URL`,
+  `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_REPOSITORY_ID`,
+  `GITHUB_REPOSITORY_OWNER_ID`, `GITHUB_WORKFLOW`, `RUNNER_ENVIRONMENT`) to a file
+  outside the candidate, and the Dagger `publish` function validates every value
+  — this repository, `github.com`, a GitHub-hosted runner, and a workflow ref of
+  exactly `.github/workflows/publish.yml` (the file npm trusted publishing is
+  bound to, whose name is unchanged) — before setting it, plus
+  `GITHUB_ACTIONS=true`/`CI=true`, in the publisher container. The canonical
+  Dagger gate now runs `scripts/provenance-probe.mts` in exactly that container:
+  a real `npm publish --provenance` of a throwaway package against a loopback
+  stub, which must get past provider detection and start provenance generation
+  (sigstore requests its OIDC token), while a control run with the GitHub
+  variables stripped must still fail with `provider: null`. (`--dry-run` could
+  not prove this: npm 11 returns before provenance on a dry run.) It does not
+  exercise a real OIDC exchange or Sigstore signing — only a GitHub run can.
+  The publisher also hands npm the archive as `./<name>.tgz`, so the argument
+  can never be read as an `owner/repo` GitHub shorthand.
+- **The publisher now binds the candidate to `main`.** `publish.yml` only
+  checked `workflow_run.head_branch == default_branch`, which a dispatch on a
+  TAG named `main` also satisfies. Before touching the artifact it now verifies,
+  through the GitHub API, that the triggering run is a successful
+  `workflow_dispatch` of `release-candidate.yml` in this repository for exactly
+  the candidate's commit, and that this commit is reachable from the
+  default-branch commit the publish runs on; the archive is that run's own
+  artifact for that commit. The Dagger publisher code is loaded from that
+  default-branch commit (`$GITHUB_SHA`), not from the candidate's sha.
+- **The pnpm supply-chain cooldown is declared again.** `minimumReleaseAge: 1440`
+  was removed in #32 ("replace the artificial 24-hour registry wait … with an
+  explicit reviewed build allowlist") and a test asserted its absence — but pnpm
+  11.5.0 defaults to 1440 anyway, so the cooldown never actually stopped
+  applying; only the repository stopped stating it. It is restored explicitly
+  (a frozen install of the pinned toolchain passes with it) and
+  `test/registry-maturity.test.ts` now requires it, with no exclusion list and no
+  non-strict escape hatch.
 
 ### Changed
 
+- **Egress receipts now carry `detector_version: "2"`.** `DETECTOR_VERSION` is
+  bumped from `"1"` because the detection ruleset changed (the Unicode email,
+  spaced/unseparated SSN and NANP phone recognizers under *Fixed*, and the SSN
+  and phone narrowings under *Security* fixed before release), so a 0.3.0
+  receipt can be told apart from one sealed by 0.2.x. This is a wire-visible
+  change: a verifier that compares `detector_version` against an allow-list must
+  accept `"2"`. Receipts sealed with a caller-pinned `detectorVersion` are
+  unaffected. A new test pins each detector version to a fingerprint of the
+  ruleset (every rule's type, pattern, flags and accept-gate in priority order,
+  plus the dictionaries), so a ruleset change without a version bump now fails
+  the gate.
 - **Truth-in-labeling: the package is described as what it is — a
   structured-identifier redaction boundary.** The npm `description` now names
   the detected categories (cards, IBANs, SSNs, emails, US phones, labeled
@@ -51,7 +219,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the developer sections) moved below the fold unchanged.
 - **The browser e2e now proves the widened formats in real Chromium.**
   `SYNTHETIC_STATEMENT` carries an "Additional contacts" block containing every
-  newly-covered format, and the Playwright suite asserts each raw value *and its
+  newly-covered format — including a dashed ITIN, `+1(415) 555-0199`, a card
+  followed by its expiry, a phone glued to an extension, a dot-separated SSN, a
+  card after another digit group and an SSN right after a reference number, the
+  shapes the security reviews found leaking — and
+  the Playwright suite asserts each raw value *and its
   identifying fragments* are absent from both the intercepted request body and
   the rendered wire pane, requires the placeholders those recognizers must mint
   (non-vacuity), and fails on any console error or warning during the flow. A
@@ -59,7 +231,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a different engine; this can. The suite also asserts the demo actually mounted,
   so an unrelated dev server squatting port 5173 fails with a named error instead
   of a bare "element(s) not found".
-- **`RULES` order is now the documented tie-break** for overlapping spans of equal
+- **`RULES` order is now the documented tie-break** for the TYPE of spans of equal
   length at the same offset (`Array.prototype.sort` has been stable since ES2019).
   The label-gated `ROUTING`/`ACCOUNT` rules are listed before `SSN`, so
   `Account number: 100200300` stays an `ACCOUNT` even though those digits are also
@@ -75,16 +247,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the code, and diffs in review. Weaker layout control is the accepted
   trade. The diagrams directory is gone; there is no render step to run.
 
-- **`@edgeproc/avow` 0.1.0 → 0.1.1**, which splits a failed verification into two
-  security-distinct subclasses of the published `SignatureInvalid` base:
-  `SignerMismatch` (`avow.signer_mismatch`) when the receipt's embedded key is
-  not the pinned signer — a *provenance* failure caught before any cryptography
-  runs — and `SignatureBytesInvalid` (which keeps `avow.signature_invalid`) when
-  the Ed25519 check rejects the bytes — a *tamper* failure. Purely additive: a
-  caller catching `SignatureInvalid` still catches both. No public API change to
-  this package; `verifySignature` is re-exported from `@edgeproc/avow` unchanged.
-  The receipt tests now assert each cause by its own subclass, code, and message,
-  so a wrong-signer rejection can no longer pass as a forged-signature rejection.
+- **Runtime dependency `@edgeproc/avow` moves from `^0.1.1` to `^0.4.1`** (0.2.2
+  shipped `^0.1.0`). This is the minor-version reason for this release: `^0.1.x` could
+  never resolve a 0.4 envelope. What this package calls is unchanged —
+  `signPayload`, `contentHash` (re-exported), and the `SignedReceipt` shape produce
+  the same canonical bytes, hashes, and signatures, so receipts sealed by 0.2.x still
+  verify and new receipts verify under older verifiers. What changes is what a
+  verifier sees when it rejects a receipt:
+  - a tampered payload now throws `PayloadHashMismatch` with code
+    `avow.payload_hash_mismatch`. Before, the class was `ReplayMismatch` and the
+    code was `avow.replay_mismatch`. `ReplayMismatch` remains as a deprecated alias
+    of the new class, so `instanceof` checks keep working, but code matches on the
+    old string no longer do;
+  - a wrong signer throws `SignerMismatch` (`avow.signer_mismatch`), and bad
+    signature bytes throw `SignatureBytesInvalid` (`avow.signature_invalid`). Both
+    still extend `SignatureInvalid`;
+  - the pinned public key is compared case-insensitively, so the same key written in
+    upper- and lower-case hex no longer reads as a signer mismatch.
+
+  The receipt tests assert each rejection by its own subclass and code, and
+  `test/receipt-compat.test.ts` pins two receipts sealed by the published
+  `@edgeproc/privacy-core@0.2.2` (on `@edgeproc/avow@0.1.0`) with a fixed seed:
+  they verify under `^0.4.1`, and re-sealing the same decision today produces the
+  byte-identical payload hash and signature.
 
 ## [0.2.2] — 2026-07-25
 

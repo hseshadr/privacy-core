@@ -49,8 +49,16 @@ export type EgressSubject = {
  * Version tag for the Tier-1 deterministic detector ruleset. Bumping the
  * ruleset bumps this so a verifier can tell which detector version screened
  * the content behind a receipt.
+ *
+ * - "1": the ruleset shipped through 0.2.x.
+ * - "2": 0.3.0 — Unicode-aware email; dashed and spaced SSNs (ungated, as the
+ *   dashed form was in 0.2.x) plus unseparated SSNs gated on the SSA issuance
+ *   rules; and the NANP phone set.
+ *
+ * `test/detector-version.test.ts` pins each version to a fingerprint of the
+ * ruleset, so a rule change without a bump fails the gate.
  */
-export const DETECTOR_VERSION = "1";
+export const DETECTOR_VERSION = "2";
 
 /** What the caller knows at the egress decision point. */
 export interface EgressSubjectInput {

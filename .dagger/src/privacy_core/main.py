@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Final, Self
 
@@ -24,6 +25,35 @@ REPOSITORY: Final = "hseshadr/privacy-core"
 REPOSITORY_URL: Final = f"https://github.com/{REPOSITORY}.git"
 PNPM_VERSION: Final = "11.5.0"
 SHA_LENGTH: Final = 40
+RELEASE_TAG: Final = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
+DIGITS: Final = re.compile(r"[0-9]+")
+BRANCH_REF: Final = r"refs/heads/[A-Za-z0-9._/-]+"
+# The GitHub Actions context npm needs inside the publisher container. npm
+# 11.13.0 (bundled with NODE_IMAGE) detects GitHub Actions through ci-info's
+# GITHUB_ACTIONS, only then attempts the OIDC trusted-publishing exchange, and
+# writes these values into the SLSA provenance statement
+# (libnpmpublish/lib/provenance.js); the registry checks them against the
+# Sigstore certificate. A container carrying only the OIDC request variables
+# fails with `EUSAGE: Automatic provenance generation not supported for
+# provider: null`. Each value is validated, because this is the only
+# caller-supplied text that reaches the publisher.
+PROVENANCE_CONTEXT: Final[dict[str, re.Pattern[str]]] = {
+    "GITHUB_EVENT_NAME": re.compile(r"workflow_run"),
+    "GITHUB_REF": re.compile(BRANCH_REF),
+    "GITHUB_REPOSITORY": re.compile(re.escape(REPOSITORY)),
+    "GITHUB_REPOSITORY_ID": DIGITS,
+    "GITHUB_REPOSITORY_OWNER_ID": DIGITS,
+    "GITHUB_RUN_ATTEMPT": DIGITS,
+    "GITHUB_RUN_ID": DIGITS,
+    "GITHUB_SERVER_URL": re.compile(r"https://github\.com"),
+    "GITHUB_SHA": re.compile(r"[0-9a-f]{40}"),
+    "GITHUB_WORKFLOW": re.compile(r"[ -~]+"),
+    # npm trusted publishing is bound to this exact workflow file.
+    "GITHUB_WORKFLOW_REF": re.compile(
+        re.escape(f"{REPOSITORY}/.github/workflows/publish.yml@") + BRANCH_REF
+    ),
+    "RUNNER_ENVIRONMENT": re.compile(r"github-hosted"),
+}
 ARCHIVE_NAME: Final = re.compile(
     r"^edgeproc-privacy-core-(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.tgz$"
 )
@@ -73,6 +103,26 @@ GITLEAKS_HISTORY: Final = [
     "--redact",
     "--no-banner",
 ]
+
+# A synthetic, valid publisher context for the provenance probe. The probe runs
+# the real npm from NODE_IMAGE against a loopback stub, so these values never
+# reach a registry; they only need to pass the same validation as a real run.
+PROBE_PORT: Final = 47291
+PROBE_SCRIPT: Final = "scripts/provenance-probe.mts"
+PROBE_CONTEXT: Final = {
+    "GITHUB_EVENT_NAME": "workflow_run",
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_REPOSITORY": REPOSITORY,
+    "GITHUB_REPOSITORY_ID": "1",
+    "GITHUB_REPOSITORY_OWNER_ID": "1",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "GITHUB_RUN_ID": "1",
+    "GITHUB_SERVER_URL": "https://github.com",
+    "GITHUB_SHA": "0" * 40,
+    "GITHUB_WORKFLOW": "Publish (npm, OIDC)",
+    "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/publish.yml@refs/heads/main",
+    "RUNNER_ENVIRONMENT": "github-hosted",
+}
 
 
 @object_type
@@ -155,8 +205,25 @@ class PrivacyCore:
         await foundation.guard(bound, REPOSITORY, commit_sha).sync()
         return bound
 
+    @function
+    def provenance_probe(self) -> dagger.Container:
+        """Prove the publisher container's npm detects GitHub Actions and starts provenance."""
+        return self._provenance_probe(self.source)
+
+    def _provenance_probe(self, source: dagger.Directory) -> dagger.Container:
+        """Run scripts/provenance-probe.mts in exactly the container `publish` builds."""
+        environment = self._provenance_environment(json.dumps(PROBE_CONTEXT))
+        url = dag.set_secret(
+            "provenance-probe-oidc-url", f"http://127.0.0.1:{PROBE_PORT}/token?probe=1"
+        )
+        token = dag.set_secret("provenance-probe-oidc-token", "probe-not-a-token")
+        probe = self._publisher(dag.directory(), url, token, environment)
+        probe = probe.with_file("/probe/provenance-probe.mts", source.file(PROBE_SCRIPT))
+        return probe.with_exec(["node", "/probe/provenance-probe.mts"])
+
     async def _run_ci(self, source: dagger.Directory, commit_sha: str = "") -> None:
         await self._quality(source).sync()
+        await self._provenance_probe(source).sync()
         await self._dependency_audit(source).sync()
         await self._secret_scan(source, commit_sha).sync()
         await self._workflow_security(source).sync()
@@ -166,6 +233,7 @@ class PrivacyCore:
         self, tag: str, commit_sha: str, github_token: dagger.Secret
     ) -> dagger.Directory:
         """Build one exact Dagger-proven npm candidate without publishing."""
+        self._require_tag(tag)
         self._require_sha(commit_sha)
         await self._hosted(commit_sha, tag, github_token).sync()
         source = self._release_source(commit_sha)
@@ -180,14 +248,33 @@ class PrivacyCore:
         expected_sha: str,
         oidc_url: dagger.Secret,
         oidc_token: dagger.Secret,
+        github_context: dagger.File,
     ) -> str:
         """Publish one exact source-free candidate with npm OIDC provenance."""
         self._require_sha(expected_sha)
+        environment = self._provenance_environment(await github_context.contents())
         archive = await self._candidate_archive(candidate)
-        publish = self._publisher(candidate, oidc_url, oidc_token)
+        publish = self._publisher(candidate, oidc_url, oidc_token, environment)
         await publish.with_exec(["sha256sum", "--check", "SHA256SUMS"]).sync()
-        command = ["npm", "publish", archive, "--access", "public", "--provenance"]
+        # `./` makes the archive unconditionally a local path: npm reads an
+        # `owner/repo`-shaped argument as a GitHub shorthand spec.
+        command = ["npm", "publish", f"./{archive}", "--access", "public", "--provenance"]
         return await publish.with_exec(command).stdout()
+
+    @staticmethod
+    def _provenance_environment(context: str) -> dict[str, str]:
+        """Validate the runner's GitHub Actions context into npm's environment."""
+        parsed: object = json.loads(context)
+        if not isinstance(parsed, dict) or set(parsed) != set(PROVENANCE_CONTEXT):
+            raise ValueError("provenance context must carry exactly the npm provenance variables")
+        values = {name: PrivacyCore._context_value(name, parsed[name]) for name in parsed}
+        return {"CI": "true", "GITHUB_ACTIONS": "true", **values}
+
+    @staticmethod
+    def _context_value(name: str, value: object) -> str:
+        if not isinstance(value, str) or PROVENANCE_CONTEXT[name].fullmatch(value) is None:
+            raise ValueError(f"provenance context {name} is not this repository's publisher")
+        return value
 
     @staticmethod
     async def _candidate_archive(candidate: dagger.Directory) -> str:
@@ -217,8 +304,11 @@ class PrivacyCore:
         candidate: dagger.Directory,
         oidc_url: dagger.Secret,
         oidc_token: dagger.Secret,
+        environment: dict[str, str],
     ) -> dagger.Container:
         base = dag.container().from_(NODE_IMAGE).with_directory("/release", candidate)
+        for name, value in sorted(environment.items()):
+            base = base.with_env_variable(name, value)
         base = base.with_workdir("/release").with_secret_variable(
             "ACTIONS_ID_TOKEN_REQUEST_URL", oidc_url
         )
@@ -348,6 +438,11 @@ class PrivacyCore:
     @staticmethod
     def _nonempty_snapshot() -> str:
         return 'test -n "$(find /snapshot -type f -print -quit)"'
+
+    @staticmethod
+    def _require_tag(tag: str) -> None:
+        if RELEASE_TAG.fullmatch(tag) is None:
+            raise ValueError("tag must be a plain vX.Y.Z release tag")
 
     @staticmethod
     def _require_sha(commit_sha: str) -> None:

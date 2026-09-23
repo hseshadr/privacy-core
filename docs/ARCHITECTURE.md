@@ -32,12 +32,22 @@ flowchart TD
 
 1. **`detect()`** (`src/detect/`) scans the text with deterministic rules: Presidio-style
    regex patterns, checksum and issuance-rule validators (Luhn for cards, mod-97 for
-   IBANs, SSA rules for SSNs), and finance/name dictionaries. Email and phone
-   recognizers are Unicode- and format-tolerant — see the
+   IBANs, SSA rules for unseparated 9-digit SSNs), and finance/name dictionaries.
+   Email and phone recognizers are Unicode- and format-tolerant — see the
    [coverage table](../README.md#what-it-recognizes-exactly) for the exact set.
-   Overlapping spans are dropped (earlier/longer wins); on an exact tie, `RULES`
-   order decides, which is why the label-gated ROUTING/ACCOUNT rules are listed
-   before the bare-digit SSN rule.
+   CARD runs as two Luhn-gated rules: a print-layout grammar tried at every
+   start (a card right after another digit group is still found) and v0.2.2's
+   loose 13–19-digit rule, scanned the v0.2.2 way, for every other layout. IBAN
+   is also tried at every start. When a validator rejects a greedy match (a
+   card followed by `12/27`), the rule's shorter candidates from the same start
+   are retried — word-closing prefixes for a card; for an IBAN, the
+   word-closing prefixes that pass mod-97 at the country's ISO 13616 length
+   (any length from 15 for a country outside the registry). Overlapping spans are MERGED into
+   their union — the earlier span's type is kept and its value becomes the
+   union's exact text — so an overlap can only widen what is redacted, never
+   uncover a neighbour. On an exact tie, `RULES` order picks the type, which is
+   why the label-gated ROUTING/ACCOUNT rules are listed before the bare-digit
+   SSN rule.
 2. **`redactForEgress()`** (`src/redact.ts`) writes each detected value into the
    **`Vault`** (`src/vault.ts`) and replaces it with a stable typed placeholder —
    `[CARD_1]`, `[NAME_2]`; the same value always gets the same token. It returns a
@@ -69,9 +79,9 @@ flowchart TD
 | `src/redact.ts` | `redactForEgress` — the only legitimate payload constructor |
 | `src/rehydrate.ts` | Local restore of real values after the reply |
 | `src/vault.ts` | `Vault` — reversible token↔value map (in-memory, v0) |
-| `src/detect/detector.ts` | `detect()` — merges patterns + dictionaries, drops overlaps |
+| `src/detect/detector.ts` | `detect()` — merges patterns + dictionaries, scans gated candidates overlapping, retries checksum-rejected matches shorter, merges overlaps into their union |
 | `src/detect/patterns.ts` | The deterministic ruleset (generic + finance packs) |
-| `src/detect/checksums.ts` | Luhn (cards) + IBAN mod-97 |
+| `src/detect/checksums.ts` | Luhn (cards), IBAN mod-97, SSA issuance rules (unseparated SSNs) |
 | `src/providers/factory.ts` | `makeProvider` — OpenRouter or the offline echo |
 | `src/providers/nollm.ts` | `NoLLMProvider` — offline echo, no API key needed |
 | `src/providers/openrouter.ts` | `OpenRouterProvider` — OpenAI-compatible chat/completions |

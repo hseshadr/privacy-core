@@ -55,6 +55,27 @@ const ORDINARY_PII: readonly OrdinaryCase[] = [
     fragments: ["234 56 7890"],
   },
   {
+    label: "ITIN written with dashes (area 9xx, never an issued SSN)",
+    raw: "912-70-1234",
+    text: "My ITIN is 912-70-1234 for the 1099.",
+    type: "SSN",
+    fragments: ["912-70-1234", "70-1234"],
+  },
+  {
+    label: "card followed by its expiry",
+    raw: "4111 1111 1111 1111",
+    text: "Charge card 4111 1111 1111 1111 12/27 for the renewal.",
+    type: "CARD",
+    fragments: ["4111 1111 1111 1111", "1111 1111"],
+  },
+  {
+    label: "IBAN followed by an uppercase word",
+    raw: "GB82 WEST 1234 5698 7654 32",
+    text: "Pay GB82 WEST 1234 5698 7654 32 REF invoice 7.",
+    type: "IBAN",
+    fragments: ["GB82 WEST", "5698 7654"],
+  },
+  {
     label: "email with a non-ASCII local part",
     raw: "josé.álvarez@example.com",
     text: "Reply to josé.álvarez@example.com when the dispute closes.",
@@ -88,6 +109,20 @@ const ORDINARY_PII: readonly OrdinaryCase[] = [
     text: "My mobile is +1 646 555 0143 for the callback.",
     type: "PHONE",
     fragments: ["646 555 0143", "555 0143"],
+  },
+  {
+    label: "phone with +1 glued to the parenthesized area code",
+    raw: "+1(415) 555-0132",
+    text: "Text +1(415) 555-0132 when it ships.",
+    type: "PHONE",
+    fragments: ["(415) 555-0132", "555-0132"],
+  },
+  {
+    label: "phone with a non-breaking space after the area code",
+    raw: "(415)\u00a0555-0132",
+    text: "Desk line (415)\u00a0555-0132 after noon.",
+    type: "PHONE",
+    fragments: ["555-0132"],
   },
 ];
 

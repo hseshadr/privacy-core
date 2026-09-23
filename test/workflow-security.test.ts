@@ -9,7 +9,7 @@ const WORKFLOWS = fileURLToPath(
 );
 const PINNED = /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[0-9a-f]{40}$/;
 const UNTRUSTED =
-  /\$\{\{[^}]*\b(?:github\.event\b|github\.head_ref\b)[^}]*\}\}/;
+  /\$\{\{[^}]*\b(?:github\.event\b|github\.head_ref\b|inputs\.)[^}]*\}\}/;
 type Mapping = Readonly<Record<string, unknown>>;
 
 interface Workflow {
@@ -93,6 +93,22 @@ describe("GitHub Actions executable surface", () => {
           (step) => typeof step.run === "string" && UNTRUSTED.test(step.run),
         )
         .map(() => file),
+    );
+    expect(injectable).toEqual([]);
+  });
+
+  it("never pastes untrusted text into an action's shell-templated inputs", () => {
+    // dagger/dagger-for-github templates `args`, `call`, `shell` and `check`
+    // straight into a bash script, so an expression there is shell text too:
+    // a dispatched tag containing `'` would run as code. Pass it via `env:`.
+    const injectable = workflows().flatMap(({ file, document }) =>
+      steps(document).flatMap((step) =>
+        Object.entries(mapping(step.with))
+          .filter(([, value]) => typeof value === "string")
+          .filter(([, value]) => UNTRUSTED.test(String(value)))
+          .filter(([key]) => ["args", "call", "shell", "check"].includes(key))
+          .map(([key]) => `${file}: ${String(step.uses)} ${key}`),
+      ),
     );
     expect(injectable).toEqual([]);
   });

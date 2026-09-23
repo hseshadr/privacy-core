@@ -4,11 +4,12 @@ import {
   verifySignature,
 } from "@edgeproc/avow";
 import { describe, expect, it } from "vitest";
-import type { EgressSubject } from "../src/index.js";
 import {
   approve,
   contentHash,
+  DETECTOR_VERSION,
   type EgressGovernance,
+  type EgressSubject,
   guardedProvider,
   type LlmProvider,
   type RedactedPayload,
@@ -147,12 +148,16 @@ describe("guardedProvider as a governed egress boundary", () => {
   });
 
   it("a pinned detectorVersion is recorded in the sealed receipt", async () => {
+    // Pin a value that is NOT the default, or this test cannot tell a working
+    // pin from one that is silently ignored.
+    const PINNED = "pinned-test-ruleset";
+    expect(PINNED).not.toBe(DETECTOR_VERSION);
     const inner = spyProvider();
     const receipts: SignedReceipt<EgressSubject>[] = [];
     const guarded = guardedProvider(inner, {
       provider: "openrouter",
       seedHex: SEED_HEX,
-      detectorVersion: "2",
+      detectorVersion: PINNED,
       onReceipt: (r) => {
         receipts.push(r);
       },
@@ -164,7 +169,7 @@ describe("guardedProvider as a governed egress boundary", () => {
     );
     await guarded.complete(payload);
 
-    expect(receipts[0]?.payload.detector_version).toBe("2");
+    expect(receipts[0]?.payload.detector_version).toBe(PINNED);
   });
 
   it("awaits an async onReceipt before completing the send", async () => {

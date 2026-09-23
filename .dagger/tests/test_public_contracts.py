@@ -140,6 +140,7 @@ def test_should_expose_canonical_gate_and_release_boundaries() -> None:
         "secret_scan",
         "workflow_security",
         "release_candidate",
+        "provenance_probe",
     }
 
     available = {name for name in expected if hasattr(PrivacyCore, name)}
@@ -281,3 +282,276 @@ def test_should_stop_before_products_when_foundation_rejects(
     with pytest.raises(ValueError, match="guard rejected"):
         asyncio.run(core.ci(VALID_SHA))
     assert events == ["source"]
+
+
+# The GitHub Actions variables npm 11.13.0 (bundled with the pinned node:24.16.0
+# image) reads to detect GitHub Actions (ci-info: GITHUB_ACTIONS) and to write
+# the SLSA provenance statement (libnpmpublish/lib/provenance.js). Without them
+# `npm publish --provenance` fails with
+# `EUSAGE: Automatic provenance generation not supported for provider: null`,
+# and the npm OIDC trusted-publishing exchange (lib/utils/oidc.js) is skipped.
+NPM_PROVENANCE_READS = {
+    "GITHUB_EVENT_NAME",
+    "GITHUB_REF",
+    "GITHUB_REPOSITORY",
+    "GITHUB_REPOSITORY_ID",
+    "GITHUB_REPOSITORY_OWNER_ID",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "GITHUB_SERVER_URL",
+    "GITHUB_SHA",
+    "GITHUB_WORKFLOW_REF",
+    "RUNNER_ENVIRONMENT",
+}
+
+VALID_CONTEXT = {
+    "GITHUB_EVENT_NAME": "workflow_run",
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_REPOSITORY": REPOSITORY,
+    "GITHUB_REPOSITORY_ID": "1012345678",
+    "GITHUB_REPOSITORY_OWNER_ID": "4185618",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "GITHUB_RUN_ID": "17123456789",
+    "GITHUB_SERVER_URL": "https://github.com",
+    "GITHUB_SHA": VALID_SHA,
+    "GITHUB_WORKFLOW": "Publish (npm, OIDC)",
+    "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/publish.yml@refs/heads/main",
+    "RUNNER_ENVIRONMENT": "github-hosted",
+}
+
+
+class RecordingContainer:
+    """Record every environment, secret, and exec call on one container chain."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object]] = []
+
+    def from_(self, image: str) -> RecordingContainer:
+        self.calls.append(("from", image))
+        return self
+
+    def with_directory(self, path: str, _directory: object) -> RecordingContainer:
+        self.calls.append(("directory", path))
+        return self
+
+    def with_workdir(self, path: str) -> RecordingContainer:
+        self.calls.append(("workdir", path))
+        return self
+
+    def with_secret_variable(self, name: str, _secret: object) -> RecordingContainer:
+        self.calls.append(("secret", name))
+        return self
+
+    def with_env_variable(self, name: str, value: str) -> RecordingContainer:
+        self.calls.append(("env", (name, value)))
+        return self
+
+    def with_file(self, path: str, _file: object) -> RecordingContainer:
+        self.calls.append(("file", path))
+        return self
+
+    def with_exec(self, command: list[str]) -> RecordingContainer:
+        self.calls.append(("exec", command))
+        return self
+
+    async def sync(self) -> RecordingContainer:
+        return self
+
+    async def stdout(self) -> str:
+        return "published"
+
+
+class ContainerDag:
+    def __init__(self, container: RecordingContainer) -> None:
+        self.recording = container
+        self.secrets: dict[str, str] = {}
+
+    def container(self) -> RecordingContainer:
+        return self.recording
+
+    def directory(self) -> object:
+        return object()
+
+    def set_secret(self, name: str, value: str) -> str:
+        self.secrets[name] = value
+        return name
+
+
+class ProbeSource:
+    def __init__(self) -> None:
+        self.files: list[str] = []
+
+    def file(self, path: str) -> object:
+        self.files.append(path)
+        return object()
+
+
+def publish_with(context: str, monkeypatch: pytest.MonkeyPatch) -> RecordingContainer:
+    archive = "edgeproc-privacy-core-1.2.3.tgz"
+    candidate = RecordingCandidate([archive, "SHA256SUMS"], f"{'a' * 64}  {archive}\n")
+    container = RecordingContainer()
+    monkeypatch.setattr(main_module, "dag", ContainerDag(container))
+    core = PrivacyCore.__new__(PrivacyCore)
+    result = asyncio.run(
+        core.publish(
+            cast(dagger.Directory, candidate),
+            VALID_SHA,
+            cast(dagger.Secret, object()),
+            cast(dagger.Secret, object()),
+            cast(dagger.File, CandidateFile(context)),
+        )
+    )
+    assert result == "published"
+    return container
+
+
+def test_should_hand_npm_every_github_actions_provenance_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given / When
+    container = publish_with(json.dumps(VALID_CONTEXT), monkeypatch)
+
+    # Then
+    env = dict(cast(tuple[str, str], value) for kind, value in container.calls if kind == "env")
+    assert env["GITHUB_ACTIONS"] == "true"
+    assert env["CI"] == "true"
+    assert set(env) >= NPM_PROVENANCE_READS
+    assert {name: env[name] for name in VALID_CONTEXT} == VALID_CONTEXT
+    secrets = {value for kind, value in container.calls if kind == "secret"}
+    assert secrets == {"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+
+
+def test_should_set_the_provenance_context_before_npm_publish_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given / When
+    container = publish_with(json.dumps(VALID_CONTEXT), monkeypatch)
+
+    # Then
+    execs = [index for index, (kind, _) in enumerate(container.calls) if kind == "exec"]
+    last_env = max(index for index, (kind, _) in enumerate(container.calls) if kind == "env")
+    publish = container.calls[execs[-1]][1]
+    assert last_env < execs[0]
+    assert publish == [
+        "npm",
+        "publish",
+        "./edgeproc-privacy-core-1.2.3.tgz",
+        "--access",
+        "public",
+        "--provenance",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ({"GITHUB_REPOSITORY": "attacker/privacy-core"}, "foreign repository"),
+        (
+            {"GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/other.yml@refs/heads/main"},
+            "workflow other than the trusted publisher",
+        ),
+        ({"RUNNER_ENVIRONMENT": "self-hosted"}, "self-hosted runner"),
+        ({"GITHUB_SERVER_URL": "https://evil.example"}, "foreign server"),
+        ({"GITHUB_SHA": "not-a-sha"}, "malformed sha"),
+        ({"GITHUB_RUN_ID": "1\nNPM_TOKEN=x"}, "newline injection"),
+        ({"GITHUB_WORKFLOW": "Publish\n"}, "control character"),
+        ({"GITHUB_RUN_ATTEMPT": 1}, "non-string value"),
+        ({"NPM_TOKEN": "smuggled"}, "unexpected variable"),
+    ],
+)
+def test_should_refuse_a_provenance_context_that_is_not_this_publisher(
+    change: dict[str, object], reason: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given
+    context = {**VALID_CONTEXT, **change}
+
+    # When / Then
+    with pytest.raises(ValueError, match="provenance context"):
+        publish_with(json.dumps(context), monkeypatch)
+    assert reason
+
+
+@pytest.mark.parametrize("payload", ["[]", "null", "{}", json.dumps({"GITHUB_SHA": VALID_SHA})])
+def test_should_refuse_a_provenance_context_missing_variables(
+    payload: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(ValueError, match="provenance context"):
+        publish_with(payload, monkeypatch)
+
+
+@pytest.mark.parametrize("tag", ["v1.2.3'", "v1.2", "1.2.3", "v01.2.3", "v1.2.3-rc.1", "v1.2.3\n"])
+def test_should_refuse_a_release_tag_that_is_not_plain_semver(tag: str) -> None:
+    core = PrivacyCore.__new__(PrivacyCore)
+
+    with pytest.raises(ValueError, match="tag"):
+        asyncio.run(core.release_candidate(tag, VALID_SHA, cast(dagger.Secret, object())))
+
+
+def test_should_probe_npm_provenance_in_exactly_the_publisher_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    container = RecordingContainer()
+    fake = ContainerDag(container)
+    monkeypatch.setattr(main_module, "dag", fake)
+    source = ProbeSource()
+    core = PrivacyCore.__new__(PrivacyCore)
+
+    # When
+    core._provenance_probe(cast(dagger.Directory, source))
+
+    # Then: the same image, the same validated provenance env, the same OIDC
+    # variable names — pointed at the probe's loopback stub — then the probe.
+    env = dict(cast(tuple[str, str], value) for kind, value in container.calls if kind == "env")
+    assert ("from", main_module.NODE_IMAGE) in container.calls
+    assert env["GITHUB_ACTIONS"] == "true"
+    assert set(env) >= NPM_PROVENANCE_READS
+    secrets = {value for kind, value in container.calls if kind == "secret"}
+    assert secrets == {"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+    assert fake.secrets["provenance-probe-oidc-url"].startswith("http://127.0.0.1:")
+    assert source.files == ["scripts/provenance-probe.mts"]
+    assert container.calls[-1] == ("exec", ["node", "/probe/provenance-probe.mts"])
+
+
+def test_should_run_the_provenance_probe_in_the_canonical_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    events: list[str] = []
+    core = PrivacyCore.__new__(PrivacyCore)
+    for name in ("_quality", "_provenance_probe", "_dependency_audit", "_workflow_security"):
+        monkeypatch.setattr(
+            core,
+            name,
+            lambda *_args, label=name: RecordingSync(label, events),
+        )
+    monkeypatch.setattr(core, "_secret_scan", lambda *_args: RecordingSync("_secret_scan", events))
+
+    # When
+    asyncio.run(core._run_ci(cast(dagger.Directory, "source"), VALID_SHA))
+
+    # Then
+    assert events == [
+        "_quality",
+        "_provenance_probe",
+        "_dependency_audit",
+        "_secret_scan",
+        "_workflow_security",
+    ]
+
+
+def test_should_hand_npm_publish_a_path_it_can_never_read_as_a_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: npm reads `owner/repo`-shaped arguments as GitHub shorthand (the
+    # failure @edgeproc/errors hit with `release/x.tgz`); only an explicit
+    # `./` or `/` prefix is unconditionally a local path.
+    container = publish_with(json.dumps(VALID_CONTEXT), monkeypatch)
+
+    # When
+    execs = [value for kind, value in container.calls if kind == "exec"]
+    publish = cast(list[str], execs[-1])
+
+    # Then
+    assert publish[:2] == ["npm", "publish"]
+    assert publish[2].startswith(("./", "/"))
