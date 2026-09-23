@@ -1,7 +1,9 @@
 # Architecture
 
-**TL;DR** — raw private text stays on-device. A deterministic detector finds PII
-from a fixed, published ruleset, a reversible vault swaps each detected value for
+**TL;DR** — raw private text stays on-device. A deterministic detector finds structured
+identifiers (cards, IBANs, SSNs, emails, US phones, labeled account/routing
+numbers) from a fixed, published ruleset (names and free-text PII are not
+generally detected). A reversible vault swaps each detected value for
 a typed placeholder, and a **type-enforced Egress Guard** makes it a *compile
 error* to hand raw text to an LLM provider. The model's reply is rehydrated
 locally, so detected values never cross the wire. What the ruleset covers — and

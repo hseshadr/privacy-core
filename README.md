@@ -1,7 +1,7 @@
 # @edgeproc/privacy-core
 
-Swaps the card numbers, emails and names in a prompt for labels like `[CARD_1]` before it leaves
-your machine, then puts the real values back into the model's reply — locally, from a table the
+Swaps the card numbers, emails, SSNs, IBANs and other structured identifiers in a prompt for labels
+like `[CARD_1]` before it leaves your machine, then puts the real values back into the model's reply — locally, from a table the
 model was never shown.
 
 Real output of the 23-line example below, run against the published npm package:
@@ -15,6 +15,9 @@ you read:    …referenced 5 redacted value(s): Grace Hopper, 4242 4242 4242 424
 
 The last two lines are the point. The model wrote `[NAME_1]`; you read *Grace Hopper*. That swap
 happened on your machine, after the network call was over.
+
+*Grace Hopper* is caught only because she is one of 3 built-in demo names — names are not
+generally detected. See [What it recognizes, exactly](#what-it-recognizes-exactly).
 
 Run it — no API key, no account. The 23 lines are in
 [Use it in your own repo](#use-it-in-your-own-repo).
@@ -96,7 +99,7 @@ that's the only way to get the answer.
 This library is the other way around. It finds the private bits **on your own
 device**, swaps each one for a label like `[CARD_1]`, and sends only the
 labeled version to the model. When the answer comes back, it puts your real
-values back in, locally. The model helps you. The model never sees you.
+values back in, locally. The model helps you. The model never sees what the detector catches.
 
 "The private bits" means a specific, listed set of things — cards, emails,
 phone numbers, SSNs, IBANs, amounts, dates. [What it recognizes,
@@ -355,7 +358,7 @@ Everything `src/index.ts` exports, and nothing more:
 
 | Export | Kind | Role |
 |---|---|---|
-| `detect` | fn | deterministic PII span detection |
+| `detect` | fn | deterministic identifier span detection |
 | `approve` | fn | explicit review step → mints the sendable payload (audit sink required) |
 | `assertApproved` | fn | runtime half of the guard — rejects unminted payloads |
 | `guardedProvider` | fn | wrap a provider so the runtime guard runs at one chokepoint — plus receipts if given a governance context |
@@ -387,9 +390,9 @@ Everything `src/index.ts` exports, and nothing more:
 | `ApproveAuditEntry` | interface | audit record for an approve step |
 | `UnsafeBypassAuditEntry` | interface | audit record for an explicit unsafe-bypass |
 | `AuditSink` | type | the audit callback signature callers supply to `approve`/`unsafeBypass` |
-| `EntityType` | type | the PII categories the detector recognizes (CARD, SSN, EMAIL, ...) |
+| `EntityType` | type | the identifier categories the detector recognizes (CARD, SSN, EMAIL, ...) |
 | `RedactedResponse` | interface | a provider's reply, still in placeholder form until rehydrated |
-| `Span` | interface | one detected PII span (type, value, start, end) |
+| `Span` | interface | one detected identifier span (type, value, start, end) |
 | `VaultRef` | interface | opaque handle to a vault's token → value mappings |
 | `Vault` | class | reversible token↔value map |
 
