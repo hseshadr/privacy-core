@@ -56,6 +56,15 @@ const NEWLY_COVERED: ReadonlyArray<{
   { raw: "415-555-0148", fragments: ["415-555-0148", "555-0148"] }, // hyphenated
   { raw: "212.555.0187", fragments: ["212.555.0187", "555.0187"] }, // dotted
   { raw: "+1 646 555 0143", fragments: ["646 555 0143", "555 0143"] }, // +1
+  { raw: "912-70-1234", fragments: ["912-70-1234", "70-1234"] }, // dashed ITIN
+  {
+    raw: "+1(415) 555-0199", // +1 glued to the parenthesized area code
+    fragments: ["(415) 555-0199", "555-0199"],
+  },
+  {
+    raw: "4111 1111 1111 1111", // card followed by its expiry (Luhn retry)
+    fragments: ["4111 1111 1111 1111", "1111 1111"],
+  },
 ];
 
 /** Every raw value and identifying fragment that must never cross the wire. */
@@ -67,17 +76,20 @@ const ALL_LEAKS = [
 /**
  * The NON-VACUITY half. Every "raw value is absent" assertion would pass
  * trivially on a fixture that simply did not contain these formats, so the wire
- * is REQUIRED to carry the placeholders the widened recognizers must mint: a
- * second SSN, a second and third EMAIL, and three more PHONEs.
+ * is REQUIRED to carry the placeholders the widened recognizers must mint:
+ * three more SSNs, a second and third EMAIL, four more PHONEs and a second CARD.
  */
 const REQUIRED_TOKENS = [
   "[SSN_2]",
   "[SSN_3]",
+  "[SSN_4]",
   "[EMAIL_2]",
   "[EMAIL_3]",
   "[PHONE_2]",
   "[PHONE_3]",
   "[PHONE_4]",
+  "[PHONE_5]",
+  "[CARD_2]",
 ];
 
 const SUCCESS_TEXT =

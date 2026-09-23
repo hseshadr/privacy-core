@@ -140,10 +140,10 @@ it is not detected, and the review step is what catches it.
 | Type | Recognized | Not recognized |
 | --- | --- | --- |
 | `EMAIL` | any script, on both sides of the `@` — `ada@example.com`, `josé.álvarez@example.com`, `kontakt@münchen-bank.example` | a domain with no dot (`user@localhost`) |
-| `SSN` | `123-45-6789`, `123 45 6789`, and unseparated `123456789` — all gated on the SSA issuance rules (area not `000`/`666`/`9xx`, group not `00`, serial not `0000`) | a 9-digit run that could never have been issued — which is how routing numbers stay routing numbers |
-| `PHONE` | US/NANP with `-`, `.` or space separators, optional parentheses, optional `+1`: `(415) 555-0132`, `415-555-0132`, `212.555.0187`, `+1 646 555 0143` | an unformatted `4155550132`, a 7-digit local number, non-NANP international |
-| `CARD` | 13–19 digits, spaced or hyphenated, **Luhn-valid** | runs that fail Luhn (deliberately — they are not card numbers) |
-| `IBAN` | grouped or compact, **mod-97-valid** | other bank identifiers (SWIFT/BIC, UK sort codes) |
+| `SSN` | dashed `123-45-6789` and spaced `123 45 6789` — **any** digits, so ITINs (`912-70-1234`) and never-issued `666-…`/`000-…`/`…-00-…` values are redacted too; unseparated `123456789` only when it passes the SSA issuance rules (area not `000`/`666`/`9xx`, group not `00`, serial not `0000`) | an unseparated 9-digit run that could never have been issued — which is how routing numbers stay routing numbers; other separators (`123.45.6789`, en dashes, NBSP) |
+| `PHONE` | US/NANP with `-`, `.` or space separators, optional parentheses, optional `+1`: `(415) 555-0132`, `+1(415) 555-0132`, `(415)`+tab/newline/NBSP+`555-0132`, `415-555-0132`, `212.555.0187`, `+1 646 555 0143`. A parenthesized area code takes any digits; without parentheses, area and exchange must start `2`–`9` | an unformatted `4155550132`, a 7-digit local number, non-NANP international, an unparenthesized number whose area or exchange starts `0`/`1` (`123-456-7890`), a number glued to an extension (`415-555-0132x12`) |
+| `CARD` | 13–19 digits, spaced or hyphenated, **Luhn-valid** — including when more digits follow (`4111 1111 1111 1111 12/27`): a Luhn-rejected match is retried shorter, ending on a word boundary | runs that fail Luhn (deliberately — they are not card numbers); a card fused into a longer digit run with no separator |
+| `IBAN` | grouped or compact, **mod-97-valid** — including when an uppercase word follows (`GB82 WEST … 32 ABCD`), by the same shorter retry | other bank identifiers (SWIFT/BIC, UK sort codes) |
 | `ROUTING` | `Routing number: 021000021` — the English label is required | a bare routing number, which is not distinguishable from any other 9-digit run |
 | `ACCOUNT` | `Account number: 000123456789` — the English label is required | a bare account number |
 | `AMOUNT` | `$1,482.10` | other currencies |
@@ -157,7 +157,10 @@ each format through the real send path and fails if the value — or an
 identifying fragment of it — reaches the network. The limits that are easiest to
 widen by accident (`4155550132`, phone-shaped reference numbers, 9-digit runs
 that are not issuable SSNs) are pinned as tests too, so quietly broadening a rule
-turns them red.
+turns them red. The floor is pinned the other way as well:
+[`test/v022-recall-floor.test.ts`](test/v022-recall-floor.test.ts) carries a
+frozen copy of the v0.2.2 recognizers and fails if anything they redacted stops
+being redacted, so a release cannot quietly narrow detection either.
 
 ## What this does not protect you from
 
@@ -337,7 +340,7 @@ src/
 ├── detect/
 │   ├── detector.ts     # detect() — merges patterns + dictionaries, drops overlaps
 │   ├── patterns.ts     # the deterministic ruleset (generic + finance packs)
-│   └── checksums.ts    # Luhn (cards) + IBAN mod-97
+│   └── checksums.ts    # Luhn (cards), IBAN mod-97, SSA rules (bare SSNs)
 ├── providers/
 │   ├── factory.ts      # makeProvider — picks OpenRouter or the offline echo
 │   ├── nollm.ts        # NoLLMProvider — offline echo, runs with no API key

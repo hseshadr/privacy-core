@@ -6,7 +6,9 @@
 
 /**
  * SYNTHETIC, INVENTED bank statement. Contains NO real PII.
- * - Card 4242…4242 is the canonical Stripe test card (Luhn-valid, not issued).
+ * - Cards 4242…4242 and 4111…1111 are canonical processor test cards
+ *   (Luhn-valid, not issued).
+ * - ITIN 912-70-1234 is an invented value in the ITIN (9xx) area range.
  * - IBAN GB82 WEST… is the public mod-97 IBAN example from Wikipedia.
  * - SSN 123-45-6789 is a textbook placeholder.
  * - Routing 021000021 is a published ABA test routing number (JPMorgan Chase).
@@ -16,9 +18,13 @@
  * The "Additional contacts" block exists so the BROWSER e2e exercises every
  * format the detector covers, not just the easy ones: an unseparated and a
  * space-separated SSN, a non-ASCII local part, an IDN domain, and hyphen-, dot-
- * and `+1`-formatted phones. Node and Chromium do not share an execution path
- * for Unicode regex semantics or source decoding, so these have to live in the
- * fixture a real browser drives — a unit test cannot vouch for them.
+ * and `+1`-formatted phones — plus the shapes the 0.3.0 security review found
+ * leaking: a dashed ITIN (area `9xx`, which the SSA issuance rules reject), a
+ * `+1` glued to a parenthesized area code, and a card followed by its expiry
+ * (the greedy match fails Luhn and must be retried shorter). Node and Chromium
+ * do not share an execution path for Unicode regex semantics or source
+ * decoding, so these have to live in the fixture a real browser drives — a unit
+ * test cannot vouch for them.
  *
  * Each value appears exactly ONCE: a standalone second copy of an already-vaulted
  * value is what the residual guard fails closed on.
@@ -35,6 +41,8 @@ Additional contacts on this account:
   Beneficiary SSN 234 56 7890, daytime line 212.555.0187
   Statements to josé.álvarez@example.com and kontakt@münchen-bank.example
   Branch callback: +1 646 555 0143
+  Tax ID: ITIN 912-70-1234, fax +1(415) 555-0199
+  Backup card 4111 1111 1111 1111 12/27
 
 Account number: 000123456789
 Routing number: 021000021

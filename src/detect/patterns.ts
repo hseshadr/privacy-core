@@ -20,25 +20,46 @@ const EMAIL_RE =
   /(?<![\p{L}\p{M}\p{N}_.+-])[\p{L}\p{M}\p{N}_.+-]+@[\p{L}\p{M}\p{N}_-]+\.[\p{L}\p{M}\p{N}_.-]*[\p{L}\p{M}\p{N}_]/gu;
 
 /**
- * US SSN in the three forms people actually type: `123-45-6789`, `123 45 6789`,
- * and unseparated `123456789`. `ssnValid` gates all three on the SSA issuance
- * rules, which is what keeps the unseparated form from swallowing arbitrary
- * 9-digit runs.
+ * US SSN / ITIN written with separators: `123-45-6789` and `123 45 6789`.
+ *
+ * Deliberately NOT gated on `ssnValid`. v0.2.2 redacted every dashed
+ * `ddd-dd-dddd`, and the SSA issuance rules would drop real identifiers written
+ * in exactly this shape: ITINs (area `9xx`, e.g. `912-70-1234`) are live
+ * taxpayer IDs, and a `666-…`/`000-…`/`…-00-…` value typed with SSN
+ * separators is still an identifier far more often than it is anything else.
+ * The separators are what make the shape specific enough on their own.
  */
-const SSN_RE = /\b(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/g;
+const SSN_SEPARATED_RE = /\b(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4})\b/g;
 
 /**
- * NANP phone number. Separators may be `-`, `.` or a space, the area code may
- * be parenthesized, and a `+1` / `1` country code is optional. Area and exchange
- * codes must start `2-9` (the NANP rule), which is what stops dotted decimals
- * and version strings from reading as phone numbers.
+ * US SSN written as a bare 9-digit run: `123456789`. Gated on `ssnValid` (SSA
+ * issuance rules): an unseparated 9-digit run is otherwise indistinguishable
+ * from an ABA routing number (`021000021` — group `00`) or an order number, so
+ * only structurally issuable SSNs are taken.
+ */
+const SSN_BARE_RE = /\b\d{9}\b/g;
+
+/**
+ * NANP phone number, in two branches.
+ *
+ * Parenthesized: `(415) 555-0132`, with an optional `+1`/`1` country code that
+ * may be glued to the parenthesis (`+1(415) 555-0132`) and any single
+ * whitespace character — including NBSP, tab or newline — or `-`/`.` after the
+ * `)`. The parentheses already mark the area code, so no digit-class rule is
+ * applied here: this branch is a superset of the v0.2.2 `(\d{3})\s?\d{3}-\d{4}`
+ * recognizer, which matched `(123) 456-7890` and `(415) 155-0132` too.
+ *
+ * Unparenthesized: `415-555-0132`, `212.555.0187`, `+1 646 555 0143`. Separators
+ * may be `-`, `.` or a space. Here the area and exchange codes must start `2-9`
+ * (the NANP rule) — that is what stops dotted decimals, IPs and version strings
+ * from reading as phone numbers when nothing else marks the shape.
  *
  * A separator or parentheses are REQUIRED: a bare `4155550132` is not matched,
  * because a 10-digit run with no formatting is indistinguishable from an order
  * or reference number. That limit is stated in the README coverage table.
  */
 const PHONE_RE =
-  /(?<!\d)(?:\+?1[-. ])?(?:\([2-9]\d{2}\)[-. ]?|[2-9]\d{2}[-. ])[2-9]\d{2}[-. ]\d{4}\b/g;
+  /(?:(?<!\d)\+?1[-. ]?)?\(\d{3}\)[-.\s]?\d{3}[-. ]\d{4}\b|(?<!\d)(?:\+?1[-. ])?[2-9]\d{2}[-. ][2-9]\d{2}[-. ]\d{4}\b/g;
 
 /** A regex recognizer, optionally gated by a checksum/structure accept-test. */
 export interface Rule {
@@ -74,7 +95,8 @@ export const RULES: readonly Rule[] = [
   { type: "CARD", re: /\b(?:\d[ -]?){13,19}\b/g, accept: luhnValid },
   { type: "ROUTING", re: /\bRouting number:\s*(\d{9})\b/g },
   { type: "ACCOUNT", re: /\bAccount number:\s*(\d{9,12})\b/g },
-  { type: "SSN", re: SSN_RE, accept: ssnValid },
+  { type: "SSN", re: SSN_SEPARATED_RE },
+  { type: "SSN", re: SSN_BARE_RE, accept: ssnValid },
   { type: "PHONE", re: PHONE_RE },
   { type: "AMOUNT", re: /\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/g },
   { type: "DATE", re: /\b\d{2}\/\d{2}\/\d{4}\b/g },

@@ -51,8 +51,9 @@ export type EgressSubject = {
  * the content behind a receipt.
  *
  * - "1": the ruleset shipped through 0.2.x.
- * - "2": 0.3.0 — Unicode-aware email, spaced and unseparated SSNs (gated on
- *   SSA issuance rules), and the NANP phone set.
+ * - "2": 0.3.0 — Unicode-aware email; dashed and spaced SSNs (ungated, as the
+ *   dashed form was in 0.2.x) plus unseparated SSNs gated on the SSA issuance
+ *   rules; and the NANP phone set.
  *
  * `test/detector-version.test.ts` pins each version to a fingerprint of the
  * ruleset, so a rule change without a bump fails the gate.

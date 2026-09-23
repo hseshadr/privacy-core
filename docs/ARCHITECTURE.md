@@ -32,12 +32,14 @@ flowchart TD
 
 1. **`detect()`** (`src/detect/`) scans the text with deterministic rules: Presidio-style
    regex patterns, checksum and issuance-rule validators (Luhn for cards, mod-97 for
-   IBANs, SSA rules for SSNs), and finance/name dictionaries. Email and phone
-   recognizers are Unicode- and format-tolerant — see the
+   IBANs, SSA rules for unseparated 9-digit SSNs), and finance/name dictionaries.
+   Email and phone recognizers are Unicode- and format-tolerant — see the
    [coverage table](../README.md#what-it-recognizes-exactly) for the exact set.
-   Overlapping spans are dropped (earlier/longer wins); on an exact tie, `RULES`
-   order decides, which is why the label-gated ROUTING/ACCOUNT rules are listed
-   before the bare-digit SSN rule.
+   When a validator rejects a greedy match (a card followed by `12/27`), shorter
+   candidates from the same start that end on a word boundary are retried,
+   longest first. Overlapping spans are dropped (earlier/longer wins); on an
+   exact tie, `RULES` order decides, which is why the label-gated ROUTING/ACCOUNT
+   rules are listed before the bare-digit SSN rule.
 2. **`redactForEgress()`** (`src/redact.ts`) writes each detected value into the
    **`Vault`** (`src/vault.ts`) and replaces it with a stable typed placeholder —
    `[CARD_1]`, `[NAME_2]`; the same value always gets the same token. It returns a
@@ -69,9 +71,9 @@ flowchart TD
 | `src/redact.ts` | `redactForEgress` — the only legitimate payload constructor |
 | `src/rehydrate.ts` | Local restore of real values after the reply |
 | `src/vault.ts` | `Vault` — reversible token↔value map (in-memory, v0) |
-| `src/detect/detector.ts` | `detect()` — merges patterns + dictionaries, drops overlaps |
+| `src/detect/detector.ts` | `detect()` — merges patterns + dictionaries, retries checksum-rejected matches shorter, drops overlaps |
 | `src/detect/patterns.ts` | The deterministic ruleset (generic + finance packs) |
-| `src/detect/checksums.ts` | Luhn (cards) + IBAN mod-97 |
+| `src/detect/checksums.ts` | Luhn (cards), IBAN mod-97, SSA issuance rules (unseparated SSNs) |
 | `src/providers/factory.ts` | `makeProvider` — OpenRouter or the offline echo |
 | `src/providers/nollm.ts` | `NoLLMProvider` — offline echo, no API key needed |
 | `src/providers/openrouter.ts` | `OpenRouterProvider` — OpenAI-compatible chat/completions |
