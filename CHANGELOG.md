@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The README follows the portfolio template.** Its first screen is written for
+  a non-specialist: a plain tagline, a hero that is the real output of a
+  15-line example run against the published 0.3.0 package, an "At a glance"
+  list (including exactly what stays on the device and what leaves it) and a
+  "Try it in 60 seconds" section. The deeper material (recognized formats,
+  receipts, compile-time guard, public API) moves below the fold unchanged,
+  alongside new "Why this and not X", security, evidence and configuration
+  sections. `package.json` `description` is now the same tagline, still stating
+  that names and other details are not caught; the published 0.3.0 keeps its
+  old description. A Vitest README contract test (`test/readme.contract.test.ts`,
+  inside `pnpm gate`) pins the first-screen structure, the tagline/description
+  equality, the architecture-map link, the Beta status at the package version,
+  and every relative link.
 - **The 512 KiB hostile-input timing guard now catches a slowdown anywhere in
   `detect()`, not only in the IBAN retry.** It was one relative bound (IBAN
   shapes within 7x a card-shaped workload), so a slowdown in the shared scan or
