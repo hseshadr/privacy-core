@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { RULES } from "../src/detect/patterns.js";
 import {
@@ -25,6 +27,40 @@ function leakedChars(text: string, value: string): string {
     if (!spans.some((s) => s.start <= i && i < s.end)) leaked += text[i];
   }
   return leaked;
+}
+
+/**
+ * Best-of-three `detect()` milliseconds per repeated `unit` at `size`
+ * characters, measured in a child Node process with no coverage
+ * instrumentation (see test/support/detect-timing.mjs).
+ */
+function timeDetectUninstrumented(
+  size: number,
+  units: readonly string[],
+  ceilingMs: number,
+): Record<string, number> {
+  const script = fileURLToPath(
+    new URL("./support/detect-timing.mjs", import.meta.url),
+  );
+  const env = { ...process.env };
+  delete env.NODE_V8_COVERAGE;
+  delete env.NODE_OPTIONS;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      "--disable-warning=ExperimentalWarning",
+      script,
+      String(size),
+      JSON.stringify(units),
+      String(ceilingMs),
+    ],
+    { encoding: "utf8", env, timeout: 50_000 },
+  );
+  // A quadratic scan never finishes 512 KiB: the spawn timeout kills it.
+  expect(child.error?.message, "detect() timing child").toBeUndefined();
+  expect(child.status, child.stderr).toBe(0);
+  return JSON.parse(child.stdout) as Record<string, number>;
 }
 
 function valuesOf(text: string, type: EntityType): string[] {
@@ -450,31 +486,42 @@ describe("the shorter-candidate retry stays sound and linear", () => {
     }
   });
 
-  it("scans 512 KiB of IBAN-shaped input without a per-start retry blow-up", () => {
+  it("scans 512 KiB of IBAN-, card- and email-shaped input in bounded time", () => {
     // Every `AB12`/`GB82` group starts an IBAN candidate. Re-testing ~7 shorter
     // prefixes at each start made this ~25x slower than v0.2.2 (1.2-1.6 s on
-    // the browser thread); the single-pass candidate scan keeps it near the
-    // cost of any other hostile shape (~130-270 ms uninstrumented).
+    // the browser thread); v0.2.2's email pattern was quadratic on a `1234-`
+    // run (minutes at this size). The fixed scan takes ~100-250 ms per shape
+    // uninstrumented.
     //
-    // Coverage instrumentation slows these tight loops several-fold, and CI
-    // runners vary, so the bound is RELATIVE: best-of-three against a
-    // same-size card-shaped workload measured in the same process. Measured
-    // under coverage: the old per-group retry ran ~11x that workload, the fix
-    // ~1-4.5x (~1.4x uninstrumented).
-    const size = 512 * 1024;
-    const best = (unit: string) => {
-      const input = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-      let fastest = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const started = performance.now();
-        detect(input);
-        fastest = Math.min(fastest, performance.now() - started);
-      }
-      return fastest;
-    };
-    const reference = best("4111 1111 1111 1111 12 ");
-    for (const unit of ["AB12 ", "GB82 A1 ", "AB12\t", "MA64 0110 "]) {
-      expect(best(unit) / reference, unit).toBeLessThan(7);
+    // Two guards, because each misses what the other catches:
+    // - an ABSOLUTE ceiling (1.5 s, ~6x the measured worst) on every shape,
+    //   which catches a slowdown in the SHARED scan/merge code — that slows the
+    //   reference too, so a ratio alone cannot see it;
+    // - a RELATIVE bound (IBAN shapes < 3x a same-size card-shaped workload),
+    //   which catches an IBAN-only regression on a runner fast enough to stay
+    //   under the ceiling. Uninstrumented, the fix measures <= 1.4x; the
+    //   pre-fix per-group IBAN retry (`shorter: wordClosingPrefixes`) measures
+    //   3.9-5.4x, so a 4x bound would sometimes miss it and 3x does not.
+    //
+    // The timing runs in a plain Node child (test/support/detect-timing.mjs),
+    // outside Vitest's coverage instrumentation, which slows these tight
+    // loops several-fold and unevenly; each figure is best-of-three.
+    const reference = "4111 1111 1111 1111 12 ";
+    const iban = ["AB12 ", "GB82 A1 ", "AB12\t", "MA64 0110 "];
+    const card = [reference, "4111 ", "4111-", "3782 822463 "];
+    const email = ["1234-", "a.", "a.b@c.", "x@y.z "];
+    const ceilingMs = 1500;
+    const timings = timeDetectUninstrumented(
+      512 * 1024,
+      [...card, ...iban, ...email],
+      ceilingMs,
+    );
+    for (const [unit, ms] of Object.entries(timings)) {
+      expect(ms, JSON.stringify(unit)).toBeLessThan(ceilingMs);
+    }
+    for (const unit of iban) {
+      const ratio = (timings[unit] ?? Number.NaN) / (timings[reference] ?? 0);
+      expect(ratio, JSON.stringify(unit)).toBeLessThan(3);
     }
   }, 60_000);
 

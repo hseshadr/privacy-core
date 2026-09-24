@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The 512 KiB hostile-input timing guard now catches a slowdown anywhere in
+  `detect()`, not only in the IBAN retry.** It was one relative bound (IBAN
+  shapes within 7x a card-shaped workload), so a slowdown in the shared scan or
+  merge code slowed the reference too and passed. It now times IBAN, card and
+  email worst shapes in a plain Node child, outside coverage instrumentation,
+  and asserts both an absolute ceiling (each shape under 1.5 s, measured
+  100-250 ms) and a tighter relative bound (IBAN shapes under 3x the card
+  workload, measured at most 1.4x). A quadratic merge (`[...kept].pop()` per
+  span) passed the old guard and fails the new one (`a.b@c.` 3.8 s); the
+  pre-fix per-group IBAN retry measured 3.9-5.4x, which a 4x bound would
+  sometimes miss. Test-only; no change to the published package.
+
 ## [0.3.0] — 2026-09-23
 
 ### Fixed
