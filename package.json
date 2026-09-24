@@ -5,7 +5,7 @@
     "access": "public"
   },
   "type": "module",
-  "description": "A browser-side structured-identifier redaction boundary for LLM calls: detects cards, IBANs, SSNs, emails, US phones and labeled account/routing numbers on-device, sends only placeholders, rehydrates locally — enforced by a type-checked Egress Guard. Names and free-text PII are not detected.",
+  "description": "Lets apps hide card numbers, emails and similar IDs from AI, then restore them. Names and other details aren't caught.",
   "keywords": [
     "pii",
     "pii-redaction",
